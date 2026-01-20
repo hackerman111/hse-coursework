@@ -1,5 +1,5 @@
 """
-Utility functions for the library.
+Вспомогательные функции для библиотеки.
 """
 
 def example_util():

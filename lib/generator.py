@@ -1,6 +1,7 @@
 from .derivation import Derivation
 from functools import reduce
 import operator
+import heapq
 from sage.all import QQ
 
 def get_Beldiev(algebra):
@@ -23,8 +24,6 @@ def get_Beldiev(algebra):
     v_map = {g: 0 for g in gens}
     
     # Слагаемые для d/dzk (k < n-1)
-    # k - индекс переменной, по которой дифференцируем (от 0 до n-2)
-    # Соответствует z_1...z_{n-1}
     for k in range(n-1):
         tail_vars = gens[k+1:] 
         power = 4 * (k + 2)
@@ -62,20 +61,12 @@ def get_Andristy(algebra):
     U = Derivation(algebra, u_map)
     
     # V
-    # Формула: V = d/dzn + z_n^3 * d/dz_{n-1} + z_n * z_{n-1}^3 * d/dz_{n-2} + ...
-    # Общий член для d/dz_k (где z_k это gens[k-1]):
-    # Coeff = (z_n * ... * z_{k+2}) * (z_{k+1})^3
     v_map = {g: 0 for g in gens}
     v_map[zn] = 1
     
-    # Цикл по целевым переменным от z_{n-1} до z_1 (индексы n-2 ... 0)
+    # Цикл по целевым переменным
     for i in range(n - 2, -1, -1):
-        # i - индекс переменной, по которой идет дифференцирование (target)
-        # В формуле участвуют переменные "выше" i.
-        # Ближайшая переменная выше (gens[i+1]) входит в кубе.
         next_var = gens[i+1]
-        
-        # Остальные переменные выше (от i+2 до конца) входят в 1 степени
         tail_vars = gens[i+2:]
         if tail_vars:
             tail_prod = reduce(operator.mul, tail_vars, 1)
@@ -88,9 +79,7 @@ def get_Andristy(algebra):
     V = Derivation(algebra, v_map)
     
     # W
-    # Формула: W = (z_1^2 ... z_{n-1}^2) * z_n * d/dzn
     w_map = {g: 0 for g in gens}
-    
     head_vars = gens[:n-1]
     if head_vars:
         prod_head = reduce(operator.mul, head_vars, 1)
@@ -98,7 +87,6 @@ def get_Andristy(algebra):
         prod_head = 1
         
     w_coeff = (prod_head**2) * zn
-    # Направлен вдоль z_n (gens[n-1])
     w_map[gens[n-1]] = w_coeff
     
     W = Derivation(algebra, w_map)
@@ -107,7 +95,6 @@ def get_Andristy(algebra):
 
 
 def _deriv_add(D1, D2):
-    """Вспомогательная функция сложения дифференцирований"""
     alg = D1.algebra
     gens = alg.gens()
     new_map = {}
@@ -116,7 +103,6 @@ def _deriv_add(D1, D2):
     return Derivation(alg, new_map)
 
 def _deriv_scale(D, scalar):
-    """Вспомогательная функция умножения дифференцирования на скаляр"""
     alg = D.algebra
     gens = alg.gens()
     new_map = {}
@@ -125,7 +111,6 @@ def _deriv_scale(D, scalar):
     return Derivation(alg, new_map)
 
 def _deriv_sub_scaled(D1, D2, scalar):
-    """Вспомогательная функция D1 - scalar * D2"""
     alg = D1.algebra
     gens = alg.gens()
     new_map = {}
@@ -134,12 +119,6 @@ def _deriv_sub_scaled(D1, D2, scalar):
     return Derivation(alg, new_map)
 
 def _get_leading_term(D):
-    """
-    Возвращает старший член дифференцирования для редукции.
-    Формат: (индекс_компоненты, мономиальный_ключ, коэффициент)
-    Приоритет: сначала выбираем компоненту с "наибольшим" мономом.
-    Порядок переменных: стандартный Sage.
-    """
     gens = D.algebra.gens()
     best_term = None
 
@@ -163,18 +142,11 @@ def _get_leading_term(D):
                     
     return best_term
 
-def check(generators, max_iter=100):
+def check(generators, max_iter=1000):
     """
-    Проверяет, порождают ли переданные генераторы базис частных производных (d/dx_1, ..., d/dx_n).
-    Использует алгоритм, аналогичный вычислению базиса Грёбнера (замыкание относительно скобки Ли).
-    
-    Аргументы:
-        generators: список объектов Derivation
-        max_iter: ограничение на количество итераций (защита от зацикливания в бесконечной алгебре)
-        
-    Возвращает:
-        True, если найдены все частные производные (константы).
-        False, если превышен лимит итераций.
+    Оптимизированная проверка (аналог базиса Грёбнера).
+    Использует очередь с приоритетом (heapq) для обработки элементов
+    с меньшей степенью в первую очередь.
     """
     if not generators:
         return False
@@ -183,24 +155,46 @@ def check(generators, max_iter=100):
     gens = algebra.gens()
     n = len(gens)
     
-    # Базис найденных элементов в "ступенчатом" виде.
-    # Ключ: (component_index, monomial) -> Derivation
-    # Храним элементы, нормированные на старший коэффициент.
+    # Базис найденных элементов
     basis = {} 
     
-    queue = list(generators)
-    
-    # Список уже обработанных элементов для формирования пар
-    processed = []
+    # Очередь с приоритетом: (degree, unique_id, derivation)
+    # unique_id нужен для стабильности сортировки при равных степенях
+    queue = []
+    unique_counter = 0
 
-    # Целевые элементы: d/dz_i (индекс i, моном 1)
-    targets_found = {i: False for i in range(n)}
+    def get_degree(D):
+        """Вычисляет максимальную степень среди компонент векторного поля"""
+        max_deg = -1
+        for g in gens:
+            poly = D(g)
+            if poly != 0:
+                try:
+                    d = poly.degree()
+                    if d > max_deg:
+                        max_deg = d
+                except:
+                    pass
+        return max_deg
+
+    def add_to_queue(D):
+        nonlocal unique_counter
+        deg = get_degree(D)
+        # Чем меньше степень, тем выше приоритет (min-heap)
+        heapq.heappush(queue, (deg, unique_counter, D))
+        unique_counter += 1
+
+    for g in generators:
+        add_to_queue(g)
     
+    processed = []
+    targets_found = {i: False for i in range(n)}
     iter_count = 0
     
     while queue and iter_count < max_iter:
         iter_count += 1
-        current_D = queue.pop(0)
+        # Извлекаем элемент с наименьшей степенью
+        _, _, current_D = heapq.heappop(queue)
         
         # 1. Редукция
         while True:
@@ -213,10 +207,8 @@ def check(generators, max_iter=100):
             
             if key in basis:
                 basis_D = basis[key]
-                # D = D - (lc / 1) * basis_D (т.к. базисные нормированы)
                 current_D = _deriv_sub_scaled(current_D, basis_D, lc)
             else:
-                # Не можем редуцировать этот старший член
                 break
         
         lt = _get_leading_term(current_D)
@@ -232,15 +224,16 @@ def check(generators, max_iter=100):
         if lm == 1:
             targets_found[comp_idx] = True
             if all(targets_found.values()):
-                print(f"Успех! Найдены все частные производные за {iter_count} шагов.")
+                # print(f"Успех! Найдены все частные производные за {iter_count} шагов.")
                 return True
 
         # 3. Генерация новых пар (коммутаторов)
+        # Коммутируем только с уже добавленными в базис
         for old_D in processed:
             new_bracket = norm_D.bracket(old_D)
-            queue.append(new_bracket)
+            add_to_queue(new_bracket)
             
         processed.append(norm_D)
         
-    print(f"Остановка проверки: найдено {sum(targets_found.values())}/{n} производных. Лимит итераций.")
+    # print(f"Остановка проверки: найдено {sum(targets_found.values())}/{n}. Лимит итераций.")
     return False

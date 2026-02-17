@@ -52,11 +52,11 @@ class LieDerivation:
         # но переопределение логики из derivation_bracket безопаснее для сохранения того же поведения.
         # Исходная простая логика: 
         gens = self._algebra.gens()
-        new_mapping = {}
+        images = []
         for g in gens:
             val = self(other(g)) - other(self(g))
-            new_mapping[g] = val
-        return LieDerivationFactory.create(self._algebra.derivation(new_mapping))
+            images.append(val)
+        return LieDerivationFactory.create(self._algebra.derivation(images))
 
     @property
     def leading_term(self) -> Optional[Tuple[int, Any, Any]]:
@@ -135,10 +135,25 @@ class LieDerivation:
     def from_mapping(algebra, gen_mapping=None):
         """
         Создает дифференцирование по отображению.
+        
+        Args:
+            algebra: кольцо многочленов
+            gen_mapping: словарь {генератор: образ} или список образов генераторов
         """
         if gen_mapping is None:
             gen_mapping = {}
-        return LieDerivationFactory.create(algebra.derivation(gen_mapping))
+        
+        # Если передан список/кортеж, используем напрямую
+        if isinstance(gen_mapping, (list, tuple)):
+            images = list(gen_mapping)
+        # Если словарь, конвертируем в упорядоченный список
+        elif isinstance(gen_mapping, dict):
+            gens = algebra.gens()
+            images = [gen_mapping.get(g, 0) for g in gens]
+        else:
+            raise TypeError(f"gen_mapping должен быть словарём или списком, получен {type(gen_mapping)}")
+        
+        return LieDerivationFactory.create(algebra.derivation(images))
 
     @staticmethod
     def from_linear(algebra, matrix):
@@ -151,14 +166,14 @@ class LieDerivation:
         if matrix.nrows() != n or matrix.ncols() != n:
                 raise ValueError(f"Матрица должна быть {n}x{n}, получено {matrix.nrows()}x{matrix.ncols()}")
                 
-        gen_mapping = {}
+        images = []
         for i, xi in enumerate(gens):
             val = 0
             for j, xj in enumerate(gens):
                 val += matrix[i, j] * xj
-            gen_mapping[xi] = val
+            images.append(val)
         
-        return LieDerivationFactory.create(algebra.derivation(gen_mapping))
+        return LieDerivationFactory.create(algebra.derivation(images))
 
     @staticmethod
     def from_weitzenbock(algebra, matrix):
@@ -186,7 +201,7 @@ class LieDerivation:
             row = [p.derivative(g) for g in gens]
             full_jac.append(row)
             
-        gen_mapping = {}
+        images = []
         
         for j, g in enumerate(gens):
             sub_matrix_data = []
@@ -199,9 +214,9 @@ class LieDerivation:
             det = M_j.determinant()
             
             sign = (-1)**(n + j + 1)
-            gen_mapping[g] = sign * det
+            images.append(sign * det)
             
-        return LieDerivationFactory.create(algebra.derivation(gen_mapping))
+        return LieDerivationFactory.create(algebra.derivation(images))
 
     def __repr__(self):
         return f"LieD({self._d})"

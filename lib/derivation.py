@@ -142,6 +142,7 @@ class LieDerivation:
         """
         if gen_mapping is None:
             gen_mapping = {}
+<<<<<<< HEAD
         
         # Если передан список/кортеж, используем напрямую
         if isinstance(gen_mapping, (list, tuple)):
@@ -153,6 +154,10 @@ class LieDerivation:
         else:
             raise TypeError(f"gen_mapping должен быть словарём или списком, получен {type(gen_mapping)}")
         
+=======
+        gens = algebra.gens()
+        images = [gen_mapping.get(g, 0) for g in gens]
+>>>>>>> refs/remotes/origin/main
         return LieDerivationFactory.create(algebra.derivation(images))
 
     @staticmethod

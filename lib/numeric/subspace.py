@@ -62,26 +62,29 @@ class OrthonormalBasis:
 
         Всегда использует стабильный QR-пересчёт.
         """
+        M = np.asarray(M, dtype=np.float64)
         if M.ndim == 1:
             M = M.reshape(1, -1)
         if M.shape[0] == 0 or self._rank >= self.dim:
             return 0
+        if M.shape[1] != self.dim:
+            raise ValueError(
+                f"expected row dimension {self.dim}, got {M.shape[1]}"
+            )
 
         # Собираем текущие строки + новые кандидаты
         if self._rank > 0:
             combined = np.vstack([self.rows, M])
         else:
-            combined = np.asarray(M, dtype=np.float64)
+            combined = M
 
         # QR с перестановкой столбцов для устойчивого ранга
         # scipy.linalg.qr с pivoting даёт лучшую оценку ранга,
         # но для переносимости используем numpy SVD (золотой стандарт для ранга)
+        old_rank = self._rank
         new_rank = self._compute_rank_and_basis(combined)
 
-        if new_rank > self._rank:
-            added = new_rank - self._rank
-            return added
-        return 0
+        return max(0, new_rank - old_rank)
 
     def _compute_rank_and_basis(self, combined: np.ndarray) -> int:
         """

@@ -2,8 +2,9 @@
 Основной решатель: проверка Lie(G_1, …, G_m) ⊇ W_n^{(≤d)}.
 
 Реализует алгоритм из Numeric.md §3.4 с оптимизациями:
-  - инкрементальное обновление (§5.1): скобки только с новыми строками;
-  - ортогональная проекция вместо RREF (§5.2);
+  - нисходящий обход степеней для каскадов вида ad_U^k(V);
+  - нормализация строк со скобками перед пополнением базиса;
+  - SVD-базис вместо RREF для устойчивого численного ранга;
   - послойное раннее прекращение (§5.4);
   - кеширование структурных констант.
 """
@@ -120,6 +121,7 @@ class NumericLieGenerationChecker:
         alpha — кортеж-мультииндекс.
     D_max : максимальная степень для усечения (если None, берётся max(d, max deg генераторов))
     verbose : выводить промежуточные результаты
+    log_every_s : раз в сколько секунд печатать полную сводку; None/0 отключает
     """
 
     def __init__(
@@ -129,11 +131,13 @@ class NumericLieGenerationChecker:
         generators: List[Dict[int, Dict[Tuple[int, ...], float]]],
         D_max: Optional[int] = None,
         verbose: bool = True,
+        log_every_s: Optional[float] = None,
     ) -> None:
         self.n = n
         self.d = d
         self.generators = generators
         self.verbose = verbose
+        self.log_every_s = log_every_s if log_every_s and log_every_s > 0 else None
 
         # Определяем D_max
         max_gen_deg = -1
@@ -171,14 +175,14 @@ class NumericLieGenerationChecker:
         """Запустить итеративное замыкание и вернуть результат."""
         t0 = time.perf_counter()
         iteration = 0
+        next_detail_log_at = (
+            t0 + self.log_every_s
+            if self.verbose and self.log_every_s is not None
+            else None
+        )
 
         if self.verbose:
             self._print_status(iteration)
-
-        # Сохраняем ранги предыдущей итерации для определения роста
-        prev_ranks: Dict[int, int] = {
-            k: self.bases[k].rank for k in range(-1, self.D_max + 1)
-        }
 
         while True:
             iteration += 1
@@ -196,6 +200,13 @@ class NumericLieGenerationChecker:
 
                 for p in range(max(-1, r - self.D_max), min(self.D_max, r + 1) + 1):
                     q = r - p
+                    next_detail_log_at = self._maybe_print_detailed_status(
+                        iteration,
+                        t0,
+                        next_detail_log_at,
+                        active_degree=r,
+                        active_pair=(p, q),
+                    )
                     if q < -1 or q > self.D_max or q < p:
                         continue
 
@@ -229,6 +240,11 @@ class NumericLieGenerationChecker:
 
             if self.verbose:
                 self._print_status(iteration)
+            next_detail_log_at = self._maybe_print_detailed_status(
+                iteration,
+                t0,
+                next_detail_log_at,
+            )
 
             if not changed:
                 break
@@ -268,6 +284,73 @@ class NumericLieGenerationChecker:
                 parts.append(f"[{k}:{r}/{N_k}]")
         status = " ".join(parts)
         print(f"  iter {iteration:3d}: {status}")
+
+    def _maybe_print_detailed_status(
+        self,
+        iteration: int,
+        started_at: float,
+        next_log_at: Optional[float],
+        active_degree: Optional[int] = None,
+        active_pair: Optional[Tuple[int, int]] = None,
+    ) -> Optional[float]:
+        """Периодически печатать полную сводку по всем степеням."""
+        if next_log_at is None:
+            return next_log_at
+
+        now = time.perf_counter()
+        if now < next_log_at:
+            return next_log_at
+
+        print()
+        print(
+            self._build_detailed_status(
+                iteration=iteration,
+                elapsed_s=now - started_at,
+                active_degree=active_degree,
+                active_pair=active_pair,
+            )
+        )
+        print()
+        return now + self.log_every_s
+
+    def _build_detailed_status(
+        self,
+        iteration: int,
+        elapsed_s: float,
+        active_degree: Optional[int] = None,
+        active_pair: Optional[Tuple[int, int]] = None,
+    ) -> str:
+        """Построить подробную сводку по состоянию замыкания."""
+        target_full = 0
+        closure_full = 0
+        lines = [
+            "=== Progress Summary ===",
+            f"elapsed = {elapsed_s:.3f}s, iteration = {iteration}",
+            f"target range = -1..{self.d}, closure range = -1..{self.D_max}",
+        ]
+
+        if active_degree is not None:
+            lines.append(f"active degree = {active_degree}")
+        if active_pair is not None:
+            lines.append(f"active pair = ({active_pair[0]}, {active_pair[1]})")
+
+        for k in range(-1, self.D_max + 1):
+            N_k = dim_Wn_k(self.n, k)
+            rank = self.bases[k].rank
+            is_full = rank >= N_k
+            if k <= self.d and is_full:
+                target_full += 1
+            if is_full:
+                closure_full += 1
+            tag = "FULL" if is_full else f"{rank}/{N_k}"
+            scope = "target" if k <= self.d else "closure"
+            lines.append(f"Degree {k:3d} [{scope:7s}]: {tag}")
+
+        lines.insert(
+            3,
+            f"full layers: target {target_full}/{self.d + 2}, closure {closure_full}/{self.D_max + 2}",
+        )
+        return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

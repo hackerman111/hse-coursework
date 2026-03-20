@@ -17,6 +17,7 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
     "LieDerivation": ("lib.derivation", "LieDerivation"),
     "LieDerivationFactory": ("lib.derivation", "LieDerivationFactory"),
     "QuotientLieDerivation": ("lib.derivation", "QuotientLieDerivation"),
+    "LibraryLogger": ("lib.utils", "LibraryLogger"),
     "LieBasisSolver": ("lib.solver", "LieBasisSolver"),
     "check": ("lib.generator", "check"),
     "get_Beldiev": ("lib.generator", "get_Beldiev"),
@@ -28,6 +29,7 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
 __all__ = [
     "ABC",
     "Derivation",
+    "LibraryLogger",
     "LieBasisSolver",
     "LieDerivation",
     "LieDerivationFactory",
@@ -48,4 +50,3 @@ def __getattr__(name: str):
         globals()[name] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-

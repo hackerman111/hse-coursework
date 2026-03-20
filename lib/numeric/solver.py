@@ -20,6 +20,7 @@ import numpy as np
 from .bracket import batch_bracket, precompute_structure_constants
 from .indexing import dim_Wn_k, dim_Wn_leq_d, multiindices, multiindex_lookup
 from .subspace import OrthonormalBasis
+from ..utils import LibraryLogger
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,7 @@ class NumericLieGenerationChecker:
     D_max : максимальная степень для усечения (если None, берётся max(d, max deg генераторов))
     verbose : выводить промежуточные результаты
     log_every_s : раз в сколько секунд печатать полную сводку; None/0 отключает
+    logger : переиспользуемый логгер библиотеки; если не задан, создаётся автоматически
     """
 
     def __init__(
@@ -132,10 +134,12 @@ class NumericLieGenerationChecker:
         D_max: Optional[int] = None,
         verbose: bool = True,
         log_every_s: Optional[float] = None,
+        logger: Optional[LibraryLogger] = None,
     ) -> None:
         self.n = n
         self.d = d
         self.generators = generators
+        self.logger = logger if logger is not None else LibraryLogger(enabled=verbose)
         self.verbose = verbose
         self.log_every_s = log_every_s if log_every_s and log_every_s > 0 else None
 
@@ -177,11 +181,11 @@ class NumericLieGenerationChecker:
         iteration = 0
         next_detail_log_at = (
             t0 + self.log_every_s
-            if self.verbose and self.log_every_s is not None
+            if self.verbose and self.logger.enabled and self.log_every_s is not None
             else None
         )
 
-        if self.verbose:
+        if self.verbose and self.logger.enabled:
             self._print_status(iteration)
 
         while True:
@@ -238,7 +242,7 @@ class NumericLieGenerationChecker:
                         if added > 0:
                             changed = True
 
-            if self.verbose:
+            if self.verbose and self.logger.enabled:
                 self._print_status(iteration)
             next_detail_log_at = self._maybe_print_detailed_status(
                 iteration,
@@ -283,7 +287,7 @@ class NumericLieGenerationChecker:
             else:
                 parts.append(f"[{k}:{r}/{N_k}]")
         status = " ".join(parts)
-        print(f"  iter {iteration:3d}: {status}")
+        self.logger.info(f"iter {iteration:3d}: {status}")
 
     def _maybe_print_detailed_status(
         self,
@@ -294,24 +298,16 @@ class NumericLieGenerationChecker:
         active_pair: Optional[Tuple[int, int]] = None,
     ) -> Optional[float]:
         """Периодически печатать полную сводку по всем степеням."""
-        if next_log_at is None:
-            return next_log_at
-
-        now = time.perf_counter()
-        if now < next_log_at:
-            return next_log_at
-
-        print()
-        print(
-            self._build_detailed_status(
+        return self.logger.maybe_emit_periodic(
+            next_log_at=next_log_at,
+            interval_s=self.log_every_s,
+            message_factory=lambda: self._build_detailed_status(
                 iteration=iteration,
-                elapsed_s=now - started_at,
+                elapsed_s=time.perf_counter() - started_at,
                 active_degree=active_degree,
                 active_pair=active_pair,
-            )
+            ),
         )
-        print()
-        return now + self.log_every_s
 
     def _build_detailed_status(
         self,

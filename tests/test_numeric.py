@@ -1,3 +1,4 @@
+import io
 import pathlib
 import subprocess
 import sys
@@ -9,6 +10,7 @@ from numeric_check import parse_generator_spec
 from lib.numeric.indexing import dim_Wn_leq_d
 from lib.numeric.solver import NumericLieGenerationChecker, make_beldiev_generators
 from lib.numeric.subspace import OrthonormalBasis
+from lib.utils import LibraryLogger
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -26,6 +28,21 @@ class OrthonormalBasisTests(unittest.TestCase):
         self.assertEqual(basis.rank, 2)
 
 
+class LibraryLoggerTests(unittest.TestCase):
+    def test_logger_writes_banner_rule_and_key_value_to_custom_stream(self):
+        stream = io.StringIO()
+        logger = LibraryLogger(stream=stream)
+
+        logger.banner("Numeric Check", ["n = 2, d = 3"])
+        logger.rule("Trial 1/2")
+        logger.kv("G1", "dx")
+
+        output = stream.getvalue()
+        self.assertIn("Numeric Check", output)
+        self.assertIn("Trial 1/2", output)
+        self.assertIn("G1 = dx", output)
+
+
 class NumericSolverTests(unittest.TestCase):
     def test_beldiev_generators_fill_w2_up_to_degree_7(self):
         checker = NumericLieGenerationChecker(
@@ -41,6 +58,40 @@ class NumericSolverTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertGreater(result.iterations, 1)
         self.assertTrue(all(ds.is_full for ds in result.degrees))
+
+    def test_solver_uses_injected_library_logger(self):
+        stream = io.StringIO()
+        logger = LibraryLogger(stream=stream)
+        checker = NumericLieGenerationChecker(
+            2,
+            1,
+            make_beldiev_generators(2),
+            D_max=1,
+            verbose=True,
+            logger=logger,
+        )
+
+        checker.run()
+
+        output = stream.getvalue()
+        self.assertIn("iter   0:", output)
+        self.assertIn("iter   1:", output)
+
+    def test_solver_respects_verbose_flag_with_injected_logger(self):
+        stream = io.StringIO()
+        logger = LibraryLogger(stream=stream)
+        checker = NumericLieGenerationChecker(
+            2,
+            1,
+            make_beldiev_generators(2),
+            D_max=1,
+            verbose=False,
+            logger=logger,
+        )
+
+        checker.run()
+
+        self.assertEqual(stream.getvalue(), "")
 
     def test_numeric_md_dimension_examples(self):
         expected = [

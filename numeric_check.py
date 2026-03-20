@@ -21,6 +21,7 @@ import argparse
 import os
 import re
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
@@ -31,6 +32,7 @@ from lib.numeric.solver import (
     make_random_generator,
 )
 from lib.numeric.indexing import dim_Wn_leq_d
+from lib.utils import LibraryLogger
 
 
 VARIABLE_ALIASES = ("x", "y", "z", "u", "v", "w")
@@ -46,6 +48,7 @@ class RichHelpFormatter(
 # ──────────────────────────────────────────────────────────────────────────────
 # Вспомогательные функции для создания генераторов
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def make_monomial_D(n: int, a: int, b: int, target_var: int = 0):
     """
@@ -227,25 +230,27 @@ def _describe_random_generator(gen, n: int) -> str:
 # Режим 1: проверка генераторов Бельдиева
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def run_beldiev(
     n: int,
     d: int,
     D_max: int | None = None,
     log_every_s: float | None = None,
+    logger: LibraryLogger | None = None,
 ):
     """Проверить генераторы Бельдиева для W_n до степени d."""
-    print(f"╔══════════════════════════════════════════╗")
-    print(f"║  Проверка генераторов Бельдиева          ║")
-    print(f"║  n = {n}, d = {d}                           ║")
-    print(f"╚══════════════════════════════════════════╝")
-    print()
+    logger = logger or LibraryLogger()
+    logger.banner(
+        "Проверка генераторов Бельдиева",
+        [f"n = {n}, d = {d}"],
+    )
 
     generators = make_beldiev_generators(n)
 
     # Показать размерности
     total_dim = dim_Wn_leq_d(n, d)
-    print(f"  dim W_{n}^(≤{d}) = {total_dim}")
-    print()
+    logger.kv(f"dim W_{n}^(≤{d})", total_dim)
+    logger.line()
 
     if D_max is None:
         D_max = max(d, 4 * n - 1)
@@ -257,17 +262,19 @@ def run_beldiev(
         D_max=D_max,
         verbose=True,
         log_every_s=log_every_s,
+        logger=logger,
     )
     result = checker.run()
 
-    print()
-    print(result.summary())
+    logger.line()
+    logger.line(result.summary(), indent=0)
     return result
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Режим 2: проверка гипотезы 1.5-порождаемости
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def run_hypothesis(
     n: int,
@@ -278,6 +285,7 @@ def run_hypothesis(
     E_max_degree: int | None = None,
     seed: int = 42,
     log_every_s: float | None = None,
+    logger: LibraryLogger | None = None,
 ):
     """
     Проверить, порождает ли Lie(G1, G2) = W_n^{(≤d)}.
@@ -288,39 +296,39 @@ def run_hypothesis(
         E_max_degree = d + 2
     trial_count = 1 if second_gen is not None else num_trials
 
-    print(f"╔══════════════════════════════════════════╗")
-    print(f"║  Проверка гипотезы 1.5-порождаемости     ║")
-    print(f"║  n = {n}, d = {d}, trials = {trial_count}          ║")
-    print(f"╚══════════════════════════════════════════╝")
-    print()
+    logger = logger or LibraryLogger()
+    logger.banner(
+        "Проверка гипотезы 1.5-порождаемости",
+        [f"n = {n}, d = {d}, trials = {trial_count}"],
+    )
 
-    print(f"  G1 = {_describe_generator(first_gen, n)}")
-    print(
-        f"  G1 stats: terms={_generator_term_count(first_gen)}, "
+    logger.kv("G1", _describe_generator(first_gen, n))
+    logger.info(
+        f"G1 stats: terms={_generator_term_count(first_gen)}, "
         f"max_degree={_generator_max_degree(first_gen)}"
     )
     if second_gen is None:
-        print(
-            f"  G2 mode = random (trials={num_trials}, max_degree={E_max_degree}, seed={seed})"
+        logger.info(
+            f"G2 mode = random (trials={num_trials}, max_degree={E_max_degree}, seed={seed})"
         )
     else:
-        print(f"  G2 mode = fixed")
-        print(f"  G2 = {_describe_generator(second_gen, n)}")
-        print(
-            f"  G2 stats: terms={_generator_term_count(second_gen)}, "
+        logger.info("G2 mode = fixed")
+        logger.kv("G2", _describe_generator(second_gen, n))
+        logger.info(
+            f"G2 stats: terms={_generator_term_count(second_gen)}, "
             f"max_degree={_generator_max_degree(second_gen)}"
         )
-    print(f"  dim W_{n}^(≤{d}) = {dim_Wn_leq_d(n, d)}")
-    print()
+    logger.kv(f"dim W_{n}^(≤{d})", dim_Wn_leq_d(n, d))
+    logger.line()
 
     successes = 0
     rng = np.random.default_rng(seed)
     if second_gen is not None and num_trials != 1:
-        print(f"  note: fixed G2 задан, поэтому --trials={num_trials} игнорируется")
-        print()
+        logger.info(f"note: fixed G2 задан, поэтому --trials={num_trials} игнорируется")
+        logger.line()
 
     for trial in range(trial_count):
-        print(f"  ──── Trial {trial + 1}/{trial_count} ────")
+        logger.rule(label=f"Trial {trial + 1}/{trial_count}")
         if second_gen is None:
             current_second = make_random_generator(
                 n,
@@ -328,7 +336,7 @@ def run_hypothesis(
                 rng=rng,
                 sparsity=0.3,
             )
-            print(f"  G2 random: {_describe_random_generator(current_second, n)}")
+            logger.info(f"G2 random: {_describe_random_generator(current_second, n)}")
         else:
             current_second = second_gen
 
@@ -345,28 +353,31 @@ def run_hypothesis(
             D_max=max(d, current_max_degree + 1),
             verbose=True,
             log_every_s=log_every_s,
+            logger=logger,
         )
         result = checker.run()
 
         if result.success:
             successes += 1
-            print(f"  ✓ PASS ({result.elapsed_s:.3f}s, {result.iterations} iter)")
+            logger.info(f"PASS ({result.elapsed_s:.3f}s, {result.iterations} iter)")
         else:
-            print(f"  ✗ FAIL ({result.elapsed_s:.3f}s, {result.iterations} iter)")
+            logger.info(f"FAIL ({result.elapsed_s:.3f}s, {result.iterations} iter)")
             # Показать неполные степени
             for ds in result.degrees:
                 if not ds.is_full:
-                    print(f"    {ds}")
-        print()
+                    logger.info(str(ds), indent=4)
+        logger.line()
 
-    print(f"  Итого: {successes}/{trial_count} успешных")
+    logger.info(f"Итого: {successes}/{trial_count} успешных")
     if successes == trial_count:
-        print(f"  ⟹ Гипотеза ПОДТВЕРЖДЕНА (численно, для данных E)")
+        logger.info("Гипотеза ПОДТВЕРЖДЕНА (численно, для данных E)")
     elif successes > 0:
-        print(f"  ⟹ Частичное подтверждение")
+        logger.info("Частичное подтверждение")
     else:
-        print(f"  ⟹ Все попытки ПРОВАЛЕНЫ — кандидат на контрпример?")
-        print(f"     (Попробуйте увеличить d, E_max_degree или число попыток)")
+        logger.info("Все попытки ПРОВАЛЕНЫ - кандидат на контрпример?")
+        logger.info(
+            "(Попробуйте увеличить d, E_max_degree или число попыток)", indent=4
+        )
 
     return successes
 
@@ -395,13 +406,18 @@ def _describe_generator(gen, n, max_terms: int | None = None):
 # Быстрый тест размерностей
 # ──────────────────────────────────────────────────────────────────────────────
 
-def check_dimensions():
+
+def check_dimensions(logger: LibraryLogger | None = None):
     """Проверить таблицу размерностей из Numeric.md §2.3."""
-    print("Проверка таблицы размерностей из Numeric.md:")
+    logger = logger or LibraryLogger()
+    logger.line("Проверка таблицы размерностей из Numeric.md:", indent=0)
     expected = [
-        (2, 5, 56), (2, 10, 156),
-        (3, 5, 252), (3, 10, 1092),
-        (5, 5, 2310), (5, 10, 21840),
+        (2, 5, 56),
+        (2, 10, 156),
+        (3, 5, 252),
+        (3, 10, 1092),
+        (5, 5, 2310),
+        (5, 10, 21840),
     ]
     all_ok = True
     for n, d, exp in expected:
@@ -409,14 +425,15 @@ def check_dimensions():
         ok = "✓" if actual == exp else "✗"
         if actual != exp:
             all_ok = False
-        print(f"  {ok} dim W_{n}^(≤{d}) = {actual} (ожидалось {exp})")
-    print()
+        logger.info(f"{ok} dim W_{n}^(≤{d}) = {actual} (ожидалось {exp})")
+    logger.line()
     return all_ok
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def main():
     description = (
@@ -445,8 +462,12 @@ def main():
         help="Режим запуска",
     )
     common.add_argument("--n", type=int, default=2, help="Число переменных")
-    common.add_argument("--d", type=int, default=7, help="Проверять до степени d включительно")
-    common.add_argument("--Dmax", type=int, default=None, help="Максимальное усечение D_max")
+    common.add_argument(
+        "--d", type=int, default=7, help="Проверять до степени d включительно"
+    )
+    common.add_argument(
+        "--Dmax", type=int, default=None, help="Максимальное усечение D_max"
+    )
     common.add_argument(
         "--log-every",
         type=float,

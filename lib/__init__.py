@@ -13,6 +13,8 @@ from typing import Dict, Tuple
 
 
 _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
+    "DiffDegreeLieGenerationChecker": ("lib.solver", "DiffDegreeLieGenerationChecker"),
+    "DiffDegreeResult": ("lib.solver", "DiffDegreeResult"),
     "Derivation": ("lib.derivation", "Derivation"),
     "LieDerivation": ("lib.derivation", "LieDerivation"),
     "LieDerivationFactory": ("lib.derivation", "LieDerivationFactory"),
@@ -20,6 +22,7 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
     "LibraryLogger": ("lib.utils", "LibraryLogger"),
     "LieBasisSolver": ("lib.solver", "LieBasisSolver"),
     "check": ("lib.generator", "check"),
+    "check_diff_degree": ("lib.generator", "check_diff_degree"),
     "get_Beldiev": ("lib.generator", "get_Beldiev"),
     "get_Andristy": ("lib.generator", "get_Andristy"),
     "PolynomialRing": ("sage.all", "PolynomialRing"),
@@ -29,6 +32,8 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
 __all__ = [
     "ABC",
     "Derivation",
+    "DiffDegreeLieGenerationChecker",
+    "DiffDegreeResult",
     "LibraryLogger",
     "LieBasisSolver",
     "LieDerivation",
@@ -37,6 +42,7 @@ __all__ = [
     "QuotientLieDerivation",
     "abstractmethod",
     "check",
+    "check_diff_degree",
     "example_util",
     "get_Andristy",
     "get_Beldiev",

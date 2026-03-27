@@ -58,6 +58,15 @@ class LieDerivation:
     def codomain(self) -> Any:
         return self._algebra
 
+    def _extract_poly(self, element: Any) -> Any:
+        """
+        Извлечь многочлен из элемента алгебры для вычисления leading_term и degree.
+
+        По умолчанию возвращает элемент как есть.
+        QuotientLieDerivation переопределяет этот метод для подъёма из факторкольца.
+        """
+        return element
+
     def bracket(self, other: "LieDerivation") -> "LieDerivation":
         """
         [D1, D2] = D1(D2) - D2(D1)
@@ -75,11 +84,14 @@ class LieDerivation:
     def leading_term(self) -> Optional[Tuple[int, Any, Any]]:
         """
         Возвращает старший член дифференцирования (term).
+
+        Использует _extract_poly для получения многочлена из элемента алгебры,
+        что позволяет QuotientLieDerivation переопределить поведение одним методом.
         """
         best_term = None
 
         for index, gen in enumerate(self._algebra.gens()):
-            poly = self(gen)
+            poly = self._extract_poly(self(gen))
             if poly == 0:
                 continue
 
@@ -125,10 +137,12 @@ class LieDerivation:
     def degree(self) -> int:
         """
         Возвращает максимальную степень представителей коэффициентов.
+
+        Использует _extract_poly — аналогично leading_term.
         """
         max_deg = -1
         for gen in self._algebra.gens():
-            poly = self(gen)
+            poly = self._extract_poly(self(gen))
             if poly == 0:
                 continue
 

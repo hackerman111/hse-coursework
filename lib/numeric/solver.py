@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 
@@ -237,7 +237,7 @@ class NumericLieGenerationChecker:
             ),
         )
 
-    def _build_detailed_status(
+    def _build_detailed_status(  # noqa: E301
         self,
         iteration: int,
         elapsed_s: float,
@@ -275,3 +275,58 @@ class NumericLieGenerationChecker:
             f"full layers: target {target_full}/{self.d + 2}, closure {closure_full}/{self.D_max + 2}",
         )
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Публичные примитивы алгоритма
+# ---------------------------------------------------------------------------
+
+
+def try_add_to_basis(basis: OrthonormalBasis, vectors: np.ndarray) -> int:
+    """
+    Нормализовать строки и добавить новые в ортонормальный базис.
+
+    Это извлечённый строительный блок из NumericLieGenerationChecker.run():
+    нормализация + фильтрация нулевых строк + добавление через SVD.
+
+    Args:
+        basis:   ортонормальный базис подпространства
+        vectors: матрица строк для добавления
+
+    Returns:
+        Количество добавленных новых базисных векторов.
+    """
+    if vectors.shape[0] == 0:
+        return 0
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    mask = norms.ravel() > 1e-15
+    if not mask.any():
+        return 0
+    normalized = vectors[mask] / norms[mask]
+    return basis.try_add_many(normalized)
+
+
+def check_degree_fullness(
+    bases: "Dict[int, OrthonormalBasis]",
+    n: int,
+    d: int,
+) -> "List[DegreeStatus]":
+    """
+    Сформировать список статусов для степеней -1..d.
+
+    Извлечённый строительный блок из конца NumericLieGenerationChecker.run().
+
+    Args:
+        bases: словарь {degree: OrthonormalBasis}
+        n:     размерность пространства
+        d:     максимальная проверяемая степень
+
+    Returns:
+        Список DegreeStatus по каждой степени.
+    """
+    result: List[DegreeStatus] = []
+    for k in range(-1, d + 1):
+        N_k = dim_Wn_k(n, k)
+        rank = bases[k].rank if k in bases else 0
+        result.append(DegreeStatus(degree=k, rank=rank, target_dim=N_k))
+    return result

@@ -1,18 +1,42 @@
 """
-Reusable helpers for finite numeric generator enumeration.
+Помощники для конечного перебора кандидатов-генераторов (n=2, backward compat).
+
+Универсальная версия для произвольного n находится в lib/solver/enumeration.py.
+Общие утилиты (parse_coefficients, estimate_candidate_count, format_coefficient,
+iter_candidates, candidate_to_spec) реэкспортируются оттуда.
+
+Здесь сохраняются n=2-специфичные BasisTerm(ax, ay) и build_basis_terms(max_x_deg, max_y_deg)
+для обратной совместимости с numeric_enumerate.py и тестами.
 """
 
 from __future__ import annotations
 
-import itertools
-import math
 from dataclasses import dataclass
 
 from .types import Generator
 
+# --- Реэкспорт общих утилит из lib/solver/enumeration.py ----------------
+
+from lib.solver.enumeration import (  # noqa: F401
+    estimate_candidate_count,
+    format_coefficient,
+    iter_candidates,
+    parse_coefficients,
+)
+
+
+# --- n=2-специфичные компоненты (backward compat) -----------------------
+
 
 @dataclass(frozen=True)
 class BasisTerm:
+    """
+    Базисный терм для n=2 (backward compat).
+
+    Используется в numeric_enumerate.py и связанных тестах.
+    Для произвольного n используйте lib.solver.enumeration.BasisTerm.
+    """
+
     target_var: int
     ax: int
     ay: int
@@ -38,6 +62,7 @@ def build_basis_terms(
     max_y_deg: int,
     include_constants: bool,
 ) -> list[BasisTerm]:
+    """Строит список базисных термов для n=2 (backward compat)."""
     terms: list[BasisTerm] = []
     for target_var in (0, 1):
         for ax in range(max_x_deg + 1):
@@ -48,35 +73,8 @@ def build_basis_terms(
     return terms
 
 
-def parse_coefficients(text: str) -> list[float]:
-    coeffs: list[float] = []
-    for raw in text.split(","):
-        item = raw.strip()
-        if not item:
-            continue
-        value = float(item)
-        if abs(value) <= 1e-15:
-            continue
-        if not any(abs(value - seen) <= 1e-15 for seen in coeffs):
-            coeffs.append(value)
-    if not coeffs:
-        raise ValueError("need at least one nonzero coefficient in --coeffs")
-    return coeffs
-
-
-def estimate_candidate_count(
-    basis_size: int,
-    coeff_count: int,
-    min_terms: int,
-    max_terms: int,
-) -> int:
-    total = 0
-    for term_count in range(min_terms, max_terms + 1):
-        total += math.comb(basis_size, term_count) * (coeff_count**term_count)
-    return total
-
-
 def build_generator(candidate: list[tuple[BasisTerm, float]]) -> Generator:
+    """Строит Generator dict из списка (BasisTerm, коэффициент) для n=2."""
     generator: Generator = {}
     for term, coeff in candidate:
         generator.setdefault(term.target_var, {})
@@ -85,13 +83,8 @@ def build_generator(candidate: list[tuple[BasisTerm, float]]) -> Generator:
     return {target: monomials for target, monomials in generator.items() if monomials}
 
 
-def format_coefficient(value: float) -> str:
-    if abs(value - round(value)) <= 1e-12:
-        return str(int(round(value)))
-    return f"{value:g}"
-
-
 def candidate_to_spec(candidate: list[tuple[BasisTerm, float]]) -> str:
+    """Форматирует кандидата в строку (n=2, backward compat)."""
     parts = []
     for term, coeff in candidate:
         factor = term.factor_spec()
@@ -100,16 +93,3 @@ def candidate_to_spec(candidate: list[tuple[BasisTerm, float]]) -> str:
         else:
             parts.append(f"{format_coefficient(coeff)}*{factor}")
     return " + ".join(parts)
-
-
-def iter_candidates(
-    basis_terms: list[BasisTerm],
-    coeffs: list[float],
-    min_terms: int,
-    max_terms: int,
-):
-    for term_count in range(min_terms, max_terms + 1):
-        for term_combo in itertools.combinations(basis_terms, term_count):
-            for coeff_combo in itertools.product(coeffs, repeat=term_count):
-                yield list(zip(term_combo, coeff_combo))
-

@@ -3,6 +3,12 @@
 
 Не импортирует Sage-зависимые модули заранее, чтобы чисто численные
 подпакеты (`lib.numeric`) можно было использовать без побочных эффектов.
+
+Публичный API (без SageMath):
+    from lib import monomial_spec, partial_spec, combine_specs, spec_degree, random_spec
+    from lib import spec_from_string, spec_to_string
+    from lib import beldiev_specs, andrist_specs
+    from lib import check_generation
 """
 
 from __future__ import annotations
@@ -11,6 +17,25 @@ from abc import ABC, abstractmethod
 from importlib import import_module
 from typing import Dict, Tuple
 
+# --- Публичный API: не требует SageMath ------------------------------------
+
+from lib.core.spec import (  # noqa: F401
+    DerivationSpec,
+    monomial_spec,
+    partial_spec,
+    combine_specs,
+    spec_degree,
+    random_spec,
+    to_generator,
+    lie_bracket,
+    ad,
+)
+from lib.io.parse import spec_from_string, spec_to_string  # noqa: F401
+from lib.generators.beldiev import beldiev_specs  # noqa: F401
+from lib.generators.andrist import andrist_specs  # noqa: F401
+from lib.solver import check_generation  # noqa: F401
+
+# --- Lazy-загружаемые символьные зависимости (требуют SageMath) -----------
 
 _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
     "Derivation": ("lib.derivation", "Derivation"),
@@ -27,6 +52,25 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
 }
 
 __all__ = [
+    # Canonical spec API
+    "DerivationSpec",
+    "monomial_spec",
+    "partial_spec",
+    "combine_specs",
+    "spec_degree",
+    "random_spec",
+    "to_generator",
+    "lie_bracket",
+    "ad",
+    # I/O
+    "spec_from_string",
+    "spec_to_string",
+    # Generator recipes
+    "beldiev_specs",
+    "andrist_specs",
+    # Solver
+    "check_generation",
+    # Symbolic (lazy, require SageMath)
     "ABC",
     "Derivation",
     "LibraryLogger",

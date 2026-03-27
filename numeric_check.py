@@ -1,41 +1,39 @@
 #!/usr/bin/env python3
 """
-numeric_check.py — быстрая проверка гипотез о порождении W_n.
+numeric_check.py — CLI для численной проверки порождения W_n.
 
 Режимы:
-  1. beldiev  — проверка генераторов Бельдиева (известный результат)
-  2. hypo     — проверка гипотезы 1.5-порождаемости:
-                задаём G1 и либо фиксируем G2, либо выбираем случайный G2
-                и проверяем Lie(G1, G2) ⊇ W_n^{(≤d)}
+  1. beldiev   — проверка генераторов Бельдиева;
+  2. hypo      — проверка пары генераторов G1, G2 до степени d;
+  3. criterion — проверка критерия "вся алгебра Ли порождена, если
+                 порождены все дифференцирования до степени 2 включительно";
+  4. dims      — сверка таблицы размерностей из Numeric.md.
 
 Примеры:
   python numeric_check.py --mode beldiev --n 2 --d 7
-  python numeric_check.py --mode hypo --n 2 --d 10 --g1 "x^5*y^5*dx" --trials 5 --E-max-deg 12
   python numeric_check.py --mode hypo --n 2 --d 8 --g1 "x^5*y^5*dx" --g2 "dx + x*dy"
-  python numeric_check.py --mode hypo --n 1 --d 5 --g1 "x^2*dx" --g2 "dx + x^3*dx"
+  python numeric_check.py --mode criterion --n 2 --g1 "x^5*y^5*dx" --g2 "dx + x*dy"
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import numpy as np
-
-from lib.numeric.solver import (
-    NumericLieGenerationChecker,
-    make_beldiev_generators,
-    make_random_generator,
+from lib.numeric import (
+    FULL_LIE_GENERATION_DEGREE,
+    check_full_lie_generation,
+    describe_generator,
+    parse_generator_spec,
+    resolve_hypothesis_generator,
+    run_beldiev,
+    run_hypothesis,
 )
-from lib.numeric.indexing import dim_Wn_leq_d
+from lib.numeric.reference import check_dimension_examples
 from lib.utils import LibraryLogger
-
-
-VARIABLE_ALIASES = ("x", "y", "z", "u", "v", "w")
 
 
 class RichHelpFormatter(
@@ -45,404 +43,36 @@ class RichHelpFormatter(
     """Help formatter with preserved examples and visible defaults."""
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Вспомогательные функции для создания генераторов
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def make_monomial_D(n: int, a: int, b: int, target_var: int = 0):
-    """
-    Создаёт генератор D = x^a * y^b * ∂_{z_{target_var}} для n = 2.
-    Для n > 2 — D = z_0^a * z_1^b * ∂_{z_{target_var}}.
-    """
-    alpha = [0] * n
-    if n >= 1:
-        alpha[0] = a
-    if n >= 2:
-        alpha[1] = b
-    return {target_var: {tuple(alpha): 1.0}}
-
-
-def make_general_monomial_generator(n: int, exponents: list[int], target_var: int = 0):
-    """
-    Создаёт генератор D = z_0^{e_0} · z_1^{e_1} · … · z_{n-1}^{e_{n-1}} · ∂_{z_{target_var}}.
-    """
-    alpha = [0] * n
-    for i, e in enumerate(exponents):
-        if i < n:
-            alpha[i] = e
-    return {target_var: {tuple(alpha): 1.0}}
-
-
-def make_random_E(n: int, max_degree: int, seed: int | None = None):
-    """Случайный генератор E достаточно общего вида."""
-    rng = np.random.default_rng(seed)
-    return make_random_generator(n, max_degree, rng=rng, sparsity=0.3)
-
-
-def parse_generator_spec(spec: str, n: int):
-    """
-    Разобрать строку вида:
-      x^5*y^5*dx
-      dx + x*dy
-      2*z0^3*d1 - 0.5*z1*dz0
-    """
-    text = spec.replace(" ", "")
-    if not text:
-        raise ValueError("пустая спецификация генератора")
-
-    normalized = text if text[0] in "+-" else f"+{text}"
-    terms = re.findall(r"[+-][^+-]+", normalized)
-    if not terms:
-        raise ValueError(f"не удалось разобрать генератор: {spec!r}")
-
-    generator = {}
-    for raw_term in terms:
-        sign = -1.0 if raw_term[0] == "-" else 1.0
-        body = raw_term[1:]
-        factors = [factor for factor in body.split("*") if factor]
-        if not factors:
-            raise ValueError(f"пустой член в генераторе: {spec!r}")
-
-        coeff = sign
-        alpha = [0] * n
-        target_var = None
-
-        for factor in factors:
-            if re.fullmatch(r"\d+(?:\.\d+)?", factor):
-                coeff *= float(factor)
-                continue
-
-            deriv_index = _parse_derivative_factor(factor, n)
-            if deriv_index is not None:
-                if target_var is not None:
-                    raise ValueError(
-                        f"в одном члене больше одной производной: {raw_term!r}"
-                    )
-                target_var = deriv_index
-                continue
-
-            var_index, exponent = _parse_variable_factor(factor, n)
-            if var_index is None:
-                raise ValueError(f"неизвестный фактор {factor!r} в {raw_term!r}")
-            alpha[var_index] += exponent
-
-        if target_var is None:
-            raise ValueError(f"в члене {raw_term!r} не указана производная")
-
-        generator.setdefault(target_var, {})
-        alpha_tuple = tuple(alpha)
-        generator[target_var][alpha_tuple] = (
-            generator[target_var].get(alpha_tuple, 0.0) + coeff
-        )
-        if abs(generator[target_var][alpha_tuple]) <= 1e-15:
-            del generator[target_var][alpha_tuple]
-        if not generator[target_var]:
-            del generator[target_var]
-
-    if not generator:
-        raise ValueError(f"генератор {spec!r} занулился после сокращения коэффициентов")
-    return generator
-
-
-def _parse_derivative_factor(token: str, n: int):
-    """Распознать d0, dz0, dx, dy, ..."""
-    if token.startswith("d") and token[1:].isdigit():
-        index = int(token[1:])
-        return _validate_axis(index, n, token)
-
-    if token.startswith("dz") and token[2:].isdigit():
-        index = int(token[2:])
-        return _validate_axis(index, n, token)
-
-    alias_index = _alias_index(token[1:]) if token.startswith("d") else None
-    if alias_index is not None:
-        return _validate_axis(alias_index, n, token)
-
-    return None
-
-
-def _parse_variable_factor(token: str, n: int):
-    """Распознать z0^3, x^5, y, ..."""
-    exponent = 1
-    base = token
-    if "^" in token:
-        base, exponent_str = token.split("^", 1)
-        if not exponent_str.isdigit():
-            raise ValueError(f"степень должна быть целой неотрицательной: {token!r}")
-        exponent = int(exponent_str)
-
-    if base.startswith("z") and base[1:].isdigit():
-        index = int(base[1:])
-        return _validate_axis(index, n, token), exponent
-
-    alias_index = _alias_index(base)
-    if alias_index is not None:
-        return _validate_axis(alias_index, n, token), exponent
-
-    if base == "1":
-        return 0, 0
-    return None, exponent
-
-
-def _alias_index(name: str):
-    try:
-        return VARIABLE_ALIASES.index(name)
-    except ValueError:
-        return None
-
-
-def _validate_axis(index: int, n: int, token: str) -> int:
-    if index < 0 or index >= n:
-        raise ValueError(f"индекс {index} вне диапазона 0..{n - 1} в {token!r}")
-    return index
-
-
-def _resolve_hypothesis_generator(n: int, spec: str | None, a: int, b: int):
-    """Приоритет: явная спецификация, иначе legacy-пара --Da/--Db."""
-    if spec:
-        return parse_generator_spec(spec, n)
-    return make_monomial_D(n, a, b)
-
-
-def _generator_term_count(gen) -> int:
-    return sum(len(mono_dict) for mono_dict in gen.values())
-
-
-def _generator_max_degree(gen) -> int:
-    max_degree = -1
-    for mono_dict in gen.values():
-        for alpha in mono_dict:
-            max_degree = max(max_degree, sum(alpha) - 1)
-    return max_degree
-
-
-def _describe_random_generator(gen, n: int) -> str:
-    return (
-        f"random terms={_generator_term_count(gen)}, "
-        f"max_degree={_generator_max_degree(gen)}, "
-        f"targets={sorted(gen.keys())}, "
-        f"example={_describe_generator(gen, n, max_terms=4)}"
-    )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Режим 1: проверка генераторов Бельдиева
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def run_beldiev(
+def _print_criterion_result(
+    logger: LibraryLogger,
+    *,
+    g1,
+    g2,
     n: int,
-    d: int,
-    D_max: int | None = None,
-    log_every_s: float | None = None,
-    logger: LibraryLogger | None = None,
-):
-    """Проверить генераторы Бельдиева для W_n до степени d."""
-    logger = logger or LibraryLogger()
+    criterion_degree: int,
+    check_result,
+) -> None:
     logger.banner(
-        "Проверка генераторов Бельдиева",
-        [f"n = {n}, d = {d}"],
+        "Проверка критерия полной порождаемости",
+        [f"n = {n}, criterion_degree = {criterion_degree}"],
     )
-
-    generators = make_beldiev_generators(n)
-
-    # Показать размерности
-    total_dim = dim_Wn_leq_d(n, d)
-    logger.kv(f"dim W_{n}^(≤{d})", total_dim)
+    logger.kv("G1", describe_generator(g1, n))
+    logger.kv("G2", describe_generator(g2, n))
     logger.line()
-
-    if D_max is None:
-        D_max = max(d, 4 * n - 1)
-
-    checker = NumericLieGenerationChecker(
-        n,
-        d,
-        generators,
-        D_max=D_max,
-        verbose=True,
-        log_every_s=log_every_s,
-        logger=logger,
-    )
-    result = checker.run()
-
+    logger.line(check_result.numeric_result.summary(), indent=0)
     logger.line()
-    logger.line(result.summary(), indent=0)
-    return result
+    logger.info(check_result.criterion_result.summary(), indent=0)
+    logger.info(check_result.criterion_result.reason, indent=0)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Режим 2: проверка гипотезы 1.5-порождаемости
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def run_hypothesis(
-    n: int,
-    d: int,
-    first_gen,
-    second_gen=None,
-    num_trials: int = 5,
-    E_max_degree: int | None = None,
-    seed: int = 42,
-    log_every_s: float | None = None,
-    logger: LibraryLogger | None = None,
-):
-    """
-    Проверить, порождает ли Lie(G1, G2) = W_n^{(≤d)}.
-
-    Если second_gen не задан, G2 берётся случайным на каждом trial.
-    """
-    if E_max_degree is None:
-        E_max_degree = d + 2
-    trial_count = 1 if second_gen is not None else num_trials
-
-    logger = logger or LibraryLogger()
-    logger.banner(
-        "Проверка гипотезы 1.5-порождаемости",
-        [f"n = {n}, d = {d}, trials = {trial_count}"],
-    )
-
-    logger.kv("G1", _describe_generator(first_gen, n))
-    logger.info(
-        f"G1 stats: terms={_generator_term_count(first_gen)}, "
-        f"max_degree={_generator_max_degree(first_gen)}"
-    )
-    if second_gen is None:
-        logger.info(
-            f"G2 mode = random (trials={num_trials}, max_degree={E_max_degree}, seed={seed})"
-        )
-    else:
-        logger.info("G2 mode = fixed")
-        logger.kv("G2", _describe_generator(second_gen, n))
-        logger.info(
-            f"G2 stats: terms={_generator_term_count(second_gen)}, "
-            f"max_degree={_generator_max_degree(second_gen)}"
-        )
-    logger.kv(f"dim W_{n}^(≤{d})", dim_Wn_leq_d(n, d))
-    logger.line()
-
-    successes = 0
-    rng = np.random.default_rng(seed)
-    if second_gen is not None and num_trials != 1:
-        logger.info(f"note: fixed G2 задан, поэтому --trials={num_trials} игнорируется")
-        logger.line()
-
-    for trial in range(trial_count):
-        logger.rule(label=f"Trial {trial + 1}/{trial_count}")
-        if second_gen is None:
-            current_second = make_random_generator(
-                n,
-                E_max_degree,
-                rng=rng,
-                sparsity=0.3,
-            )
-            logger.info(f"G2 random: {_describe_random_generator(current_second, n)}")
-        else:
-            current_second = second_gen
-
-        current_max_degree = max(
-            _generator_max_degree(first_gen),
-            _generator_max_degree(current_second),
-            E_max_degree if second_gen is None else -1,
-        )
-
-        checker = NumericLieGenerationChecker(
-            n,
-            d,
-            [first_gen, current_second],
-            D_max=max(d, current_max_degree + 1),
-            verbose=True,
-            log_every_s=log_every_s,
-            logger=logger,
-        )
-        result = checker.run()
-
-        if result.success:
-            successes += 1
-            logger.info(f"PASS ({result.elapsed_s:.3f}s, {result.iterations} iter)")
-        else:
-            logger.info(f"FAIL ({result.elapsed_s:.3f}s, {result.iterations} iter)")
-            # Показать неполные степени
-            for ds in result.degrees:
-                if not ds.is_full:
-                    logger.info(str(ds), indent=4)
-        logger.line()
-
-    logger.info(f"Итого: {successes}/{trial_count} успешных")
-    if successes == trial_count:
-        logger.info("Гипотеза ПОДТВЕРЖДЕНА (численно, для данных E)")
-    elif successes > 0:
-        logger.info("Частичное подтверждение")
-    else:
-        logger.info("Все попытки ПРОВАЛЕНЫ - кандидат на контрпример?")
-        logger.info(
-            "(Попробуйте увеличить d, E_max_degree или число попыток)", indent=4
-        )
-
-    return successes
-
-
-def _describe_generator(gen, n, max_terms: int | None = None):
-    """Краткое описание генератора."""
-    vars = [f"z{i}" for i in range(n)]
-    parts = []
-    for i, mono_dict in sorted(gen.items()):
-        for alpha, coeff in sorted(mono_dict.items()):
-            factors = []
-            for j, a in enumerate(alpha):
-                if a == 1:
-                    factors.append(vars[j])
-                elif a > 1:
-                    factors.append(f"{vars[j]}^{a}")
-            mono_str = "*".join(factors) if factors else "1"
-            c_str = "" if coeff == 1.0 else f"{coeff:g}·"
-            parts.append(f"{c_str}{mono_str}·∂_{vars[i]}")
-    if max_terms is not None and len(parts) > max_terms:
-        return " + ".join(parts[:max_terms]) + f" + ... ({len(parts)} terms)"
-    return " + ".join(parts) if parts else "0"
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Быстрый тест размерностей
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def check_dimensions(logger: LibraryLogger | None = None):
-    """Проверить таблицу размерностей из Numeric.md §2.3."""
-    logger = logger or LibraryLogger()
-    logger.line("Проверка таблицы размерностей из Numeric.md:", indent=0)
-    expected = [
-        (2, 5, 56),
-        (2, 10, 156),
-        (3, 5, 252),
-        (3, 10, 1092),
-        (5, 5, 2310),
-        (5, 10, 21840),
-    ]
-    all_ok = True
-    for n, d, exp in expected:
-        actual = dim_Wn_leq_d(n, d)
-        ok = "✓" if actual == exp else "✗"
-        if actual != exp:
-            all_ok = False
-        logger.info(f"{ok} dim W_{n}^(≤{d}) = {actual} (ожидалось {exp})")
-    logger.line()
-    return all_ok
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def main():
+def main() -> None:
     description = (
         "Численная проверка порождения W_n.\n\n"
         "Режимы:\n"
-        "  beldiev : эталонная проверка известных генераторов Бельдиева.\n"
-        "  hypo    : проверка пары генераторов G1, G2. Если G2 не задан,\n"
-        "            он генерируется случайно на каждом trial.\n"
-        "  dims    : сверка таблицы размерностей из Numeric.md.\n\n"
+        "  beldiev   : эталонная проверка известных генераторов Бельдиева.\n"
+        "  hypo      : проверка пары генераторов G1, G2 до степени d.\n"
+        "  criterion : проверка критерия полной порождаемости по степеням <= 2.\n"
+        "  dims      : сверка таблицы размерностей из Numeric.md.\n\n"
         "Синтаксис generator-spec:\n"
         "  сумма членов вида [coeff*]monomial*differential\n"
         "  примеры: x^5*y^5*dx, dx + x*dy, 2*z0^3*d1 - 0.5*z1*dz0\n"
@@ -457,16 +87,22 @@ def main():
     common = parser.add_argument_group("Общие параметры")
     common.add_argument(
         "--mode",
-        choices=["beldiev", "hypo", "dims"],
+        choices=["beldiev", "hypo", "criterion", "dims"],
         default="beldiev",
         help="Режим запуска",
     )
     common.add_argument("--n", type=int, default=2, help="Число переменных")
     common.add_argument(
-        "--d", type=int, default=7, help="Проверять до степени d включительно"
+        "--d",
+        type=int,
+        default=7,
+        help="Проверять до степени d включительно",
     )
     common.add_argument(
-        "--Dmax", type=int, default=None, help="Максимальное усечение D_max"
+        "--Dmax",
+        type=int,
+        default=None,
+        help="Максимальное усечение D_max",
     )
     common.add_argument(
         "--log-every",
@@ -474,8 +110,14 @@ def main():
         default=5.0,
         help="Раз в сколько секунд печатать полную сводку по степеням; 0 отключает",
     )
+    common.add_argument(
+        "--criterion-degree",
+        type=int,
+        default=FULL_LIE_GENERATION_DEGREE,
+        help="Степенной порог project-criterion для полной порождаемости",
+    )
 
-    hypo_group = parser.add_argument_group("Параметры режима hypo")
+    hypo_group = parser.add_argument_group("Параметры режимов hypo / criterion")
     hypo_group.add_argument(
         "--g1",
         type=str,
@@ -486,7 +128,7 @@ def main():
         "--g2",
         type=str,
         default=None,
-        help="Второй генератор в формате generator-spec; если не задан, используется случайный G2",
+        help="Второй генератор в формате generator-spec",
     )
     hypo_group.add_argument(
         "--Da",
@@ -522,10 +164,10 @@ def main():
     args = parser.parse_args()
 
     if args.mode == "dims":
-        ok = check_dimensions()
+        ok = check_dimension_examples()
         sys.exit(0 if ok else 1)
 
-    elif args.mode == "beldiev":
+    if args.mode == "beldiev":
         result = run_beldiev(
             args.n,
             args.d,
@@ -534,14 +176,14 @@ def main():
         )
         sys.exit(0 if result.success else 1)
 
-    elif args.mode == "hypo":
-        try:
-            first_gen = _resolve_hypothesis_generator(args.n, args.g1, args.Da, args.Db)
-            second_gen = parse_generator_spec(args.g2, args.n) if args.g2 else None
-        except ValueError as exc:
-            parser.error(str(exc))
+    try:
+        first_gen = resolve_hypothesis_generator(args.n, args.g1, args.Da, args.Db)
+        second_gen = parse_generator_spec(args.g2, args.n) if args.g2 else None
+    except ValueError as exc:
+        parser.error(str(exc))
 
-        successes = run_hypothesis(
+    if args.mode == "hypo":
+        run_result = run_hypothesis(
             n=args.n,
             d=args.d,
             first_gen=first_gen,
@@ -551,7 +193,30 @@ def main():
             seed=args.seed,
             log_every_s=args.log_every,
         )
-        sys.exit(0 if successes > 0 else 1)
+        sys.exit(0 if run_result.successes > 0 else 1)
+
+    if second_gen is None:
+        parser.error("--mode criterion требует заданный --g2")
+
+    logger = LibraryLogger()
+    check_result = check_full_lie_generation(
+        n=args.n,
+        generators=[first_gen, second_gen],
+        required_degree=args.criterion_degree,
+        D_max=args.Dmax,
+        verbose=True,
+        log_every_s=args.log_every,
+        logger=logger,
+    )
+    _print_criterion_result(
+        logger,
+        g1=first_gen,
+        g2=second_gen,
+        n=args.n,
+        criterion_degree=args.criterion_degree,
+        check_result=check_result,
+    )
+    sys.exit(0 if check_result.success else 1)
 
 
 if __name__ == "__main__":

@@ -65,7 +65,14 @@ class NumericSolverTests(unittest.TestCase):
         self.assertGreater(result.iterations, 1)
         self.assertTrue(all(ds.is_full for ds in result.degrees))
 
-    def test_hypothesis_candidate_y3x3_is_not_counterexample_up_to_degree_2(self):
+    def test_hypothesis_candidate_y3x3_does_not_generate_w2(self):
+        """y^3*dx + x^3*dy and dx + x*dy do NOT generate W_2.
+
+        Previously this test asserted success=True, but that was a false
+        positive caused by phantom brackets from graded decomposition of
+        non-homogeneous generators.  The corrected full-element algorithm
+        correctly reports failure.
+        """
         first_gen = parse_generator_spec("y^3*dx + x^3*dy", 2)
         second_gen = parse_generator_spec("dx + x*dy", 2)
         checker = NumericLieGenerationChecker(
@@ -78,10 +85,14 @@ class NumericSolverTests(unittest.TestCase):
 
         result = checker.run()
 
-        self.assertTrue(result.success)
-        self.assertTrue(all(ds.is_full for ds in result.degrees))
+        self.assertFalse(result.success)
 
-    def test_hypothesis_candidate_x3y3_diagonal_is_not_counterexample_up_to_degree_2(self):
+    def test_hypothesis_candidate_x3y3_diagonal_does_not_generate_w2(self):
+        """x^3*dx + y^3*dy and dx + x*dy do NOT generate W_2.
+
+        Previously this test asserted success=True, but that was a false
+        positive caused by phantom brackets.
+        """
         first_gen = parse_generator_spec("x^3*dx + y^3*dy", 2)
         second_gen = parse_generator_spec("dx + x*dy", 2)
         checker = NumericLieGenerationChecker(
@@ -94,8 +105,7 @@ class NumericSolverTests(unittest.TestCase):
 
         result = checker.run()
 
-        self.assertTrue(result.success)
-        self.assertTrue(all(ds.is_full for ds in result.degrees))
+        self.assertFalse(result.success)
 
     def test_hypothesis_candidate_radial_quartic_dx_is_not_counterexample_up_to_degree_2(self):
         first_gen = parse_generator_spec("x^4*dx + 2*x^2*y^2*dx + y^4*dx", 2)
@@ -114,23 +124,22 @@ class NumericSolverTests(unittest.TestCase):
         self.assertTrue(all(ds.is_full for ds in result.degrees))
 
     def test_structure_constant_cache_can_be_reused_explicitly(self):
-        first_gen = parse_generator_spec("x^3*dx + y^3*dy", 2)
-        second_gen = parse_generator_spec("dx + x*dy", 2)
-        structure_constants = StructureConstantCache(n=2, D_max=3)
+        generators = make_beldiev_generators(2)
+        structure_constants = StructureConstantCache(n=2, D_max=7)
 
         first = NumericLieGenerationChecker(
             2,
             2,
-            [first_gen, second_gen],
-            D_max=3,
+            generators,
+            D_max=7,
             verbose=False,
             structure_constants=structure_constants,
         ).run()
         second = NumericLieGenerationChecker(
             2,
             2,
-            [first_gen, second_gen],
-            D_max=3,
+            generators,
+            D_max=7,
             verbose=False,
             structure_constants=structure_constants,
         ).run()
@@ -210,14 +219,49 @@ class NumericSolverTests(unittest.TestCase):
         self.assertIn("Degree  -1 [target ]", summary)
         self.assertIn("Degree   3 [closure]", summary)
 
-    def test_degree_two_criterion_accepts_full_result(self):
-        first_gen = parse_generator_spec("x^3*dx + y^3*dy", 2)
-        second_gen = parse_generator_spec("dx + x*dy", 2)
+    def test_non_generating_pair_returns_fail(self):
+        """Generators that don't generate W_2 must return success=False.
 
+        2*x*y^2*dx - x^3*y*dx and dx + x*dy do NOT generate W_2.
+        Confirmed by symbolic solver (0/2 partial derivatives found).
+        The old algorithm falsely reported PASS due to phantom brackets
+        from graded decomposition of non-homogeneous generators.
+        """
+        first_gen = parse_generator_spec("2*x*y^2*dx - x^3*y*dx", 2)
+        second_gen = parse_generator_spec("dx + x*dy", 2)
+        checker = NumericLieGenerationChecker(
+            2,
+            7,
+            [first_gen, second_gen],
+            D_max=7,
+            verbose=False,
+        )
+
+        result = checker.run()
+
+        self.assertFalse(result.success)
+
+    def test_trivially_incomplete_diagonal_pair_returns_fail(self):
+        """x*dx and y*dy can only generate diagonal fields — never cross-terms."""
+        first_gen = parse_generator_spec("x*dx", 2)
+        second_gen = parse_generator_spec("y*dy", 2)
+        checker = NumericLieGenerationChecker(
+            2,
+            2,
+            [first_gen, second_gen],
+            D_max=3,
+            verbose=False,
+        )
+
+        result = checker.run()
+
+        self.assertFalse(result.success)
+
+    def test_degree_two_criterion_accepts_full_result(self):
         check = check_full_lie_generation(
             n=2,
-            generators=[first_gen, second_gen],
-            D_max=3,
+            generators=make_beldiev_generators(2),
+            D_max=7,
         )
 
         self.assertTrue(check.success)
@@ -302,11 +346,11 @@ class NumericCliTests(unittest.TestCase):
                 "--n",
                 "2",
                 "--g1",
-                "x^3*dx + y^3*dy",
+                "x^4*dx + 2*x^2*y^2*dx + y^4*dx",
                 "--g2",
                 "dx + x*dy",
                 "--Dmax",
-                "3",
+                "4",
                 "--log-every",
                 "0",
             ],

@@ -82,10 +82,12 @@ class NumericLieGenerationChecker:
             N_k = dim_Wn_k(n, k)
             self.bases[k] = OrthonormalBasis(N_k)
 
-        # Разложить генераторы и засеять подпространства
+        # Разложить генераторы в полные элементы и засеять подпространства
+        self._elements: List[Dict[int, np.ndarray]] = []
         for gen in generators:
-            components = decompose_generator(gen, n, self.D_max)
-            for k, vec in components.items():
+            elem = decompose_generator(gen, n, self.D_max)
+            self._elements.append(elem)
+            for k, vec in elem.items():
                 if k in self.bases:
                     self.bases[k].try_add(vec)
 
@@ -105,6 +107,8 @@ class NumericLieGenerationChecker:
 
     def run(self) -> NumericResult:
         """Запустить итеративное замыкание и вернуть результат."""
+        from .bracket import bracket_full_elements
+
         t0 = time.perf_counter()
         iteration = 0
         next_detail_log_at = (
@@ -116,69 +120,52 @@ class NumericLieGenerationChecker:
         if self.verbose and self.logger.enabled:
             self._print_status(iteration)
 
-        while True:
+        # Алгоритм «новые-против-существующих» (Buchberger-style):
+        # processed — элементы, уже прошедшие через все скобки;
+        # pending   — элементы, которые ещё нужно прокоммутировать.
+        processed: List[Dict[int, np.ndarray]] = []
+        pending: List[Dict[int, np.ndarray]] = list(self._elements)
+
+        while pending:
             iteration += 1
-            changed = False
+            next_pending: List[Dict[int, np.ndarray]] = []
 
-            # Обрабатываем степени в НИСХОДЯЩЕМ порядке: каскад ad_U
-            # идёт от высоких степеней к низким, и при нисходящем порядке
-            # новые элементы доступны для вычисления скобок на ТЕКУЩЕЙ итерации.
-            for r in range(self.D_max, -2, -1):
-                N_r = dim_Wn_k(self.n, r)
-                if self.bases[r].is_full(N_r):
-                    continue  # Степень r уже полна — скобки не добавят нового
-
-                new_rows_list: List[np.ndarray] = []
-
-                for p in range(max(-1, r - self.D_max), min(self.D_max, r + 1) + 1):
-                    q = r - p
+            # Скобки: каждый pending × (все processed + остальные pending)
+            for i, elem_new in enumerate(pending):
+                # С каждым processed
+                for elem_old in processed:
                     next_detail_log_at = self._maybe_print_detailed_status(
-                        iteration,
-                        t0,
-                        next_detail_log_at,
-                        active_degree=r,
-                        active_pair=(p, q),
+                        iteration, t0, next_detail_log_at,
                     )
-                    if q < -1 or q > self.D_max or q < p:
-                        continue
+                    bracket = bracket_full_elements(
+                        elem_new, elem_old, self.n, self.structure_constants,
+                    )
+                    self._try_add_bracket(bracket, next_pending)
 
-                    Bp = self.bases.get(p)
-                    Bq = self.bases.get(q)
-                    if Bp is None or Bq is None or Bp.rank == 0 or Bq.rank == 0:
-                        continue
+                # С другими pending (только i < j, чтобы не дублировать)
+                for j in range(i + 1, len(pending)):
+                    next_detail_log_at = self._maybe_print_detailed_status(
+                        iteration, t0, next_detail_log_at,
+                    )
+                    bracket = bracket_full_elements(
+                        elem_new, pending[j], self.n, self.structure_constants,
+                    )
+                    self._try_add_bracket(bracket, next_pending)
 
-                    sc = self.structure_constants.get(p, q)
-                    if sc is None:
-                        continue
-
-                    # Вычисляем все скобки [B_p, B_q]
-                    all_p = Bp.all_rows
-                    all_q = Bq.all_rows
-                    if all_p.shape[0] > 0 and all_q.shape[0] > 0:
-                        brackets = batch_bracket(all_p, p, all_q, q, self.n, sc)
-                        if brackets.shape[0] > 0:
-                            new_rows_list.append(brackets)
-
-                if new_rows_list:
-                    all_new = np.vstack(new_rows_list)
-                    # Нормализуем строки для числовой устойчивости SVD
-                    norms = np.linalg.norm(all_new, axis=1, keepdims=True)
-                    mask = norms.ravel() > 1e-15
-                    if mask.any():
-                        all_new = all_new[mask] / norms[mask]
-                        added = self.bases[r].try_add_many(all_new)
-                        if added > 0:
-                            changed = True
+            processed.extend(pending)
+            pending = next_pending
 
             if self.verbose and self.logger.enabled:
                 self._print_status(iteration)
             next_detail_log_at = self._maybe_print_detailed_status(
-                iteration,
-                t0,
-                next_detail_log_at,
+                iteration, t0, next_detail_log_at,
             )
 
-            if not changed:
+            # Ранняя остановка: все целевые степени полны
+            if all(
+                self.bases[k].rank >= dim_Wn_k(self.n, k)
+                for k in range(-1, self.d + 1)
+            ):
                 break
 
         elapsed = time.perf_counter() - t0
@@ -203,6 +190,32 @@ class NumericLieGenerationChecker:
             iterations=iteration,
             elapsed_s=elapsed,
         )
+
+    def _try_add_bracket(
+        self,
+        bracket: Dict[int, np.ndarray],
+        next_pending: List[Dict[int, np.ndarray]],
+    ) -> None:
+        """Попробовать добавить компоненты скобки в базисы.
+
+        Если хотя бы одна компонента увеличила ранг соответствующего
+        подпространства, весь элемент добавляется в next_pending
+        для дальнейших итераций.
+        """
+        if not bracket:
+            return
+        added_any = False
+        for k, vec in bracket.items():
+            if k not in self.bases:
+                continue
+            norm = np.linalg.norm(vec)
+            if norm < 1e-15:
+                continue
+            normalized = vec / norm
+            if self.bases[k].try_add(normalized):
+                added_any = True
+        if added_any:
+            next_pending.append(bracket)
 
     def _print_status(self, iteration: int) -> None:
         """Вывести краткий статус."""

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import heapq
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..derivation import LieDerivation
 from .operations import generate_commutators, reduce_derivation
@@ -20,12 +20,18 @@ class LieBasisSolver:
     Аналог поиска базиса Грёбнера для алгебры Ли векторных полей.
     """
 
-    def __init__(self, generators: List[LieDerivation], max_iter: int = 1000):
+    def __init__(
+        self,
+        generators: List[LieDerivation],
+        max_iter: int = 1000,
+        stop_condition: Optional[Callable[["LieBasisSolver"], bool]] = None,
+    ):
         if not generators:
             raise ValueError("Список генераторов не может быть пустым")
 
         self.generators = generators
         self.max_iter = max_iter
+        self.stop_condition = stop_condition
         self.algebra = generators[0].codomain()
         self.gens = self.algebra.gens()
         self.n = len(self.gens)
@@ -75,6 +81,13 @@ class LieBasisSolver:
             self.gens[comp_idx],
             monomial,
         )
+
+        if self.stop_condition is not None and self.stop_condition(self):
+            logger.info(
+                "Остановка по stop_condition на итерации %s.",
+                self.iter_count,
+            )
+            return False
 
         if monomial == 1:
             if not self.targets_found[comp_idx]:

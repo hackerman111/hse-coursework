@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -132,6 +132,58 @@ def bracket_vectors(
     contributions = u[rows_a] * v[rows_b] * vals
     np.add.at(result, cols_c, contributions)
     return result
+
+
+def bracket_full_elements(
+    f: Dict[int, np.ndarray],
+    g: Dict[int, np.ndarray],
+    n: int,
+    structure_cache: "StructureConstantCache",
+) -> Dict[int, np.ndarray]:
+    """
+    Вычислить скобку Ли [f, g] двух полных (неоднородных) элементов.
+
+    Каждый элемент — словарь {степень: координатный вектор в W_n^(k)}.
+    Скобка вычисляется как:
+        [f, g]_r = sum_{p+q=r} [f_p, g_q]
+    для каждой целевой степени r.
+
+    Это корректно обрабатывает неоднородные элементы, суммируя ВСЕ
+    вклады разных степеней, в отличие от скобок пулов по степеням, которые
+    могут порождать фантомные скобки.
+
+    Args:
+        f: первый элемент, {степень: np.ndarray}
+        g: второй элемент, {степень: np.ndarray}
+        n: число переменных
+        structure_cache: предвычисленные структурные константы
+
+    Returns:
+        Dict[int, np.ndarray] — скобка [f, g], индексированная по степени.
+        Включаются только степени с ненулевым результатом.
+    """
+    result: Dict[int, np.ndarray] = {}
+
+    for p, f_p in f.items():
+        for q, g_q in g.items():
+            r = p + q
+            sc = structure_cache.get(p, q) if p <= q else structure_cache.get(q, p)
+            if sc is None:
+                continue
+
+            if p <= q:
+                contribution = bracket_vectors(f_p, p, g_q, q, n, sc=sc)
+            else:
+                # [f_p, g_q] = -[g_q, f_p] при использовании sc для (q, p)
+                contribution = -bracket_vectors(g_q, q, f_p, p, n, sc=sc)
+
+            N_r = dim_Wn_k(n, r)
+            if r not in result:
+                result[r] = np.zeros(N_r, dtype=np.float64)
+            result[r] += contribution
+
+    # Отфильтровать нулевые компоненты
+    return {k: v for k, v in result.items() if np.linalg.norm(v) > 1e-15}
 
 
 def batch_bracket(

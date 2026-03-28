@@ -321,5 +321,84 @@ class NumericCliTests(unittest.TestCase):
         self.assertIn("PASS: full-lie-from-degree-bound", proc.stdout)
 
 
+from lib.numeric.bracket import bracket_vectors, bracket_full_elements
+
+
+class BracketVectorsTests(unittest.TestCase):
+    """Unit tests for low-level bracket computation."""
+
+    def test_partial_x_bracket_x_partial_y_gives_partial_y(self):
+        """[d/dx, x*d/dy] = d/dy in W_2."""
+        u = np.array([1.0, 0.0])
+        v = np.array([0.0, 0.0, 1.0, 0.0])
+        result = bracket_vectors(u, -1, v, 0, 2)
+        expected = np.array([0.0, 1.0])
+        np.testing.assert_allclose(result, expected)
+
+    def test_commuting_diagonal_fields_give_zero(self):
+        """[x*d/dx, y*d/dy] = 0 in W_2."""
+        u = np.array([1.0, 0.0, 0.0, 0.0])
+        v = np.array([0.0, 0.0, 0.0, 1.0])
+        result = bracket_vectors(u, 0, v, 0, 2)
+        np.testing.assert_allclose(result, np.zeros(4), atol=1e-14)
+
+    def test_antisymmetry(self):
+        """[u, v] = -[v, u] for bracket_vectors."""
+        u = np.array([1.0, 0.0, 0.0, 0.0])
+        v = np.array([0.0, 1.0, 0.0, 0.0])
+        from lib.numeric.bracket import precompute_structure_constants
+        sc_pq = precompute_structure_constants(2, 0, 0)
+        fwd = bracket_vectors(u, 0, v, 0, 2, sc=sc_pq)
+        rev = bracket_vectors(v, 0, u, 0, 2, sc=sc_pq)
+        np.testing.assert_allclose(fwd, -rev, atol=1e-14)
+
+
+class BracketFullElementsTests(unittest.TestCase):
+    """Unit tests for full-element bracket."""
+
+    def test_self_bracket_is_zero(self):
+        """[G, G] must be zero for any element."""
+        from lib.numeric.structure import StructureConstantCache
+        sc = StructureConstantCache(n=2, D_max=3)
+        elem = {
+            -1: np.array([1.0, 0.0]),
+            0: np.array([0.0, 0.0, 1.0, 0.0]),
+        }
+        result = bracket_full_elements(elem, elem, 2, sc)
+        for k, vec in result.items():
+            np.testing.assert_allclose(
+                vec, np.zeros_like(vec), atol=1e-14,
+                err_msg=f"self-bracket nonzero at degree {k}",
+            )
+
+    def test_bracket_matches_bracket_vectors_for_homogeneous(self):
+        """For single-degree elements, bracket_full_elements matches bracket_vectors."""
+        from lib.numeric.structure import StructureConstantCache
+        sc = StructureConstantCache(n=2, D_max=3)
+        f = {-1: np.array([1.0, 0.0])}
+        g = {0: np.array([0.0, 0.0, 1.0, 0.0])}
+        result = bracket_full_elements(f, g, 2, sc)
+        expected = bracket_vectors(
+            np.array([1.0, 0.0]), -1,
+            np.array([0.0, 0.0, 1.0, 0.0]), 0,
+            2,
+        )
+        self.assertIn(-1, result)
+        np.testing.assert_allclose(result[-1], expected)
+
+    def test_cross_bracket_of_non_homogeneous_elements(self):
+        """[G1, G2] where both span multiple degrees."""
+        from lib.numeric.structure import StructureConstantCache
+        sc = StructureConstantCache(n=2, D_max=5)
+        from lib.numeric.components import decompose_generator
+        g1_spec = {0: {(1, 2): 2.0, (3, 1): -1.0}}
+        g2_spec = {0: {(0, 0): 1.0}, 1: {(1, 0): 1.0}}
+        elem1 = decompose_generator(g1_spec, 2, 5)
+        elem2 = decompose_generator(g2_spec, 2, 5)
+        result = bracket_full_elements(elem1, elem2, 2, sc)
+        has_nonzero = any(np.linalg.norm(v) > 1e-14 for v in result.values())
+        self.assertTrue(has_nonzero, "bracket of G1, G2 should be nonzero")
+
+
 if __name__ == "__main__":
     unittest.main()

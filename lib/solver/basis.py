@@ -82,25 +82,26 @@ class LieBasisSolver:
             monomial,
         )
 
-        if self.stop_condition is not None and self.stop_condition(self):
-            logger.info(
-                "Остановка по stop_condition на итерации %s.",
-                self.iter_count,
-            )
-            return False
-
-        if monomial == 1:
-            if not self.targets_found[comp_idx]:
-                self.targets_found[comp_idx] = True
-                logger.info("Найдена производная d/d%s", self.gens[comp_idx])
-
-            if all(self.targets_found.values()):
+        if self.stop_condition is not None:
+            if self.stop_condition(self):
                 logger.info(
-                    "Успех! Найдены все %s частных производных за %s шагов.",
-                    self.n,
+                    "Остановка по stop_condition на итерации %s.",
                     self.iter_count,
                 )
                 return False
+        else:
+            if monomial == 1:
+                if not self.targets_found[comp_idx]:
+                    self.targets_found[comp_idx] = True
+                    logger.info("Найдена производная d/d%s", self.gens[comp_idx])
+
+                if all(self.targets_found.values()):
+                    logger.info(
+                        "Успех! Найдены все %s частных производных за %s шагов.",
+                        self.n,
+                        self.iter_count,
+                    )
+                    return False
 
         self._generate_commutators(normalized)
         self.processed.append(normalized)
@@ -117,8 +118,13 @@ class LieBasisSolver:
         while running:
             running = self.step()
 
-        success = all(self.targets_found.values())
-        if not success:
+        if self.stop_condition is not None:
+            # При наличии stop_condition определение успеха — ответственность
+            # вызывающего кода; возвращаем True если stop_condition сработал.
+            success = self.stop_condition(self)
+        else:
+            success = all(self.targets_found.values())
+        if not success and self.stop_condition is None:
             found_count = sum(self.targets_found.values())
             logger.warning(
                 "Остановка проверки: найдено %s/%s. Очередь пуста или лимит %s.",

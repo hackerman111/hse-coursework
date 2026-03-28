@@ -6,8 +6,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sage.all import Matrix
-
 
 def _images_from_mapping(algebra: Any, gen_mapping: Any = None) -> list[Any]:
     if gen_mapping is None:
@@ -70,6 +68,7 @@ def from_weitzenbock(algebra: Any, matrix: Any):
 
 def from_jacobian(algebra: Any, polynomials: Any):
     from .factory import LieDerivationFactory
+    from sage.all import Matrix
 
     gens = algebra.gens()
     size = len(gens)

@@ -90,6 +90,20 @@ class DerivationSpec:
         return hash((self.n, tuple(sorted(self.terms.keys()))))
 
 
+@dataclass(frozen=True)
+class LeadingTerm:
+    """
+    Старший член в каноническом spec-представлении.
+
+    Поле `degree` дублируется явно для удобства инспекции и сортировки.
+    """
+
+    axis: int
+    alpha: tuple[int, ...]
+    coeff: Scalar
+    degree: int
+
+
 # ---------------------------------------------------------------------------
 # Примитивные кирпичики
 # ---------------------------------------------------------------------------
@@ -104,13 +118,12 @@ def monomial_spec(
     """
     Мономиальное поле: coeff * z^alpha * ∂/∂z_axis.
 
-    Args:
-        n:     размерность пространства
-        axis:  индекс компоненты производной (0..n-1)
-        alpha: мультиидекс (кортеж длины n)
-        coeff: коэффициент (по умолчанию 1)
+    На вход принимает размерность `n`, номер компоненты `axis`,
+    мультииндекс `alpha` и коэффициент `coeff`.
+    На выходе возвращает `DerivationSpec` с одним мономом.
 
-    Пример: monomial_spec(2, 0, (2, 1)) = x^2*y*∂/∂x
+    >>> monomial_spec(2, axis=0, alpha=(2, 1), coeff=3)
+    DerivationSpec(n=2, terms={0: {(2, 1): 3}})
     """
     if len(alpha) != n:
         raise ValueError(f"len(alpha)={len(alpha)} != n={n}")
@@ -121,9 +134,11 @@ def partial_spec(n: int, axis: int) -> DerivationSpec:
     """
     Частная производная ∂/∂z_axis.
 
-    Эквивалентно monomial_spec(n, axis, (0,...,0), 1).
+    На вход принимает размерность `n` и номер координаты `axis`.
+    На выходе возвращает `DerivationSpec`, соответствующий `∂/∂z_axis`.
 
-    Пример: partial_spec(2, 0) = ∂/∂x
+    >>> partial_spec(2, axis=1)
+    DerivationSpec(n=2, terms={1: {(0, 0): 1}})
     """
     zero_alpha = (0,) * n
     return DerivationSpec(n=n, terms={axis: {zero_alpha: 1}})
@@ -133,9 +148,12 @@ def combine_specs(*specs: DerivationSpec) -> DerivationSpec:
     """
     Сумма дифференцирований: сложить все specs в одно.
 
-    Коэффициенты одинаковых мономов суммируются. Нулевые результаты удаляются.
+    На вход принимает один или несколько `DerivationSpec` с одинаковой
+    размерностью `n`.
+    На выходе возвращает их сумму с объединёнными компонентами.
 
-    Все specs должны иметь одинаковое n.
+    >>> combine_specs(partial_spec(2, 0), partial_spec(2, 1))
+    DerivationSpec(n=2, terms={0: {(0, 0): 1}, 1: {(0, 0): 1}})
     """
     if not specs:
         raise ValueError("combine_specs требует хотя бы одного аргумента")
@@ -144,8 +162,7 @@ def combine_specs(*specs: DerivationSpec) -> DerivationSpec:
     for spec in specs[1:]:
         if spec.n != n:
             raise ValueError(
-                f"Все specs должны иметь одинаковое n, "
-                f"получено {spec.n} вместо {n}"
+                f"Все specs должны иметь одинаковое n, получено {spec.n} вместо {n}"
             )
 
     merged: dict[int, dict[tuple[int, ...], Scalar]] = {}
@@ -164,10 +181,12 @@ def spec_degree(spec: DerivationSpec) -> int:
     """
     Максимальная степень дифференцирования.
 
-    Степень монома z^alpha * ∂/∂z_i равна sum(alpha) - 1
-    (стандартное градуирование алгебры W_n).
+    На вход принимает один `DerivationSpec`.
+    На выходе возвращает максимальную степень `sum(alpha) - 1`,
+    а для нулевого spec возвращает `-1`.
 
-    Возвращает -1 для нулевого (пустого) дифференцирования.
+    >>> spec_degree(monomial_spec(2, axis=0, alpha=(2, 1)))
+    2
     """
     max_deg = -1
     for mono_dict in spec.terms.values():
@@ -176,6 +195,154 @@ def spec_degree(spec: DerivationSpec) -> int:
             if deg > max_deg:
                 max_deg = deg
     return max_deg
+
+
+def zero_spec(n: int) -> DerivationSpec:
+    """
+    Нулевое дифференцирование в W_n.
+
+    На вход принимает только размерность `n`.
+    На выходе возвращает пустой `DerivationSpec` без мономов.
+
+    >>> zero_spec(2)
+    DerivationSpec(n=2, terms={})
+    """
+    return DerivationSpec(n=n)
+
+
+def scale_spec(spec: DerivationSpec, scalar: Scalar) -> DerivationSpec:
+    """
+    Умножить дифференцирование на скаляр.
+
+    На вход принимает `DerivationSpec` и число `scalar`.
+    На выходе возвращает новый `DerivationSpec` с масштабированными коэффициентами.
+    >>> scale_spec(partial_spec(2, 0), -2)
+    DerivationSpec(n=2, terms={0: {(0, 0): -2}})
+    """
+    if scalar == 0:
+        return zero_spec(spec.n)
+    return DerivationSpec(
+        n=spec.n,
+        terms={
+            axis: {
+                alpha: coeff * scalar  # type: ignore[operator]
+                for alpha, coeff in mono_dict.items()
+            }
+            for axis, mono_dict in spec.terms.items()
+        },
+    )
+
+
+def normalize_spec(spec: DerivationSpec, eps: float = 1e-15) -> DerivationSpec:
+    """
+    Нормализовать spec, удаляя коэффициенты с модулем <= eps.
+
+    На вход принимает `DerivationSpec` и порог `eps`.
+    На выходе возвращает новый `DerivationSpec` без достаточно малых коэффициентов.
+
+    >>> normalize_spec(monomial_spec(2, axis=0, alpha=(1, 0), coeff=1e-10), eps=1e-5)
+    DerivationSpec(n=2, terms={})
+    """
+    return DerivationSpec(
+        n=spec.n,
+        terms={
+            axis: {
+                alpha: coeff
+                for alpha, coeff in mono_dict.items()
+                if abs(float(coeff)) > eps
+            }
+            for axis, mono_dict in spec.terms.items()
+        },
+    )
+
+
+def homogeneous_component(spec: DerivationSpec, degree: int) -> DerivationSpec:
+    """
+    Извлечь однородную компоненту фиксированной степени.
+
+    На вход принимает `DerivationSpec` и целую степень `degree`.
+    На выходе возвращает только те мономы, у которых `sum(alpha) - 1 == degree`.
+
+    >>> source = combine_specs(partial_spec(2, 0), monomial_spec(2, 1, (2, 0), coeff=5))
+    >>> homogeneous_component(source, -1)
+    DerivationSpec(n=2, terms={0: {(0, 0): 1}})
+    """
+    return DerivationSpec(
+        n=spec.n,
+        terms={
+            axis: {
+                alpha: coeff
+                for alpha, coeff in mono_dict.items()
+                if sum(alpha) - 1 == degree
+            }
+            for axis, mono_dict in spec.terms.items()
+        },
+    )
+
+
+def homogeneous_components(spec: DerivationSpec) -> dict[int, DerivationSpec]:
+    """
+    Разбить spec на однородные компоненты по стандартному градуированию W_n.
+
+    На вход принимает один `DerivationSpec`.
+    На выходе возвращает словарь `степень -> однородная компонента`.
+
+    >>> source = combine_specs(partial_spec(2, 0), monomial_spec(2, 1, (2, 0), coeff=5))
+    >>> parts = homogeneous_components(source)
+    >>> sorted(parts)
+    [-1, 1]
+    >>> parts[-1] == partial_spec(2, 0)
+    True
+    >>> parts[1] == monomial_spec(2, 1, (2, 0), coeff=5)
+    True
+    """
+    grouped: dict[int, dict[int, dict[tuple[int, ...], Scalar]]] = {}
+    for axis, mono_dict in spec.terms.items():
+        for alpha, coeff in mono_dict.items():
+            degree = sum(alpha) - 1
+            grouped.setdefault(degree, {}).setdefault(axis, {})[alpha] = coeff
+
+    return {
+        degree: DerivationSpec(n=spec.n, terms=terms)
+        for degree, terms in grouped.items()
+    }
+
+
+def leading_term_spec(spec: DerivationSpec, order: str = "lex") -> LeadingTerm | None:
+    """
+    Выбрать старший член spec по заданному мономиальному порядку.
+
+    На вход принимает `DerivationSpec` и имя порядка `order`.
+    На выходе возвращает `LeadingTerm` для старшего монома или `None` для нуля.
+
+    >>> source = combine_specs(partial_spec(2, 0), monomial_spec(2, 1, (2, 0), coeff=5))
+    >>> leading_term_spec(source)
+    LeadingTerm(axis=1, alpha=(2, 0), coeff=5, degree=1)
+    """
+    if order != "lex":
+        raise ValueError(
+            f"Неподдерживаемый порядок {order!r}; сейчас доступен только 'lex'"
+        )
+
+    best: LeadingTerm | None = None
+    for axis, mono_dict in spec.terms.items():
+        for alpha, coeff in mono_dict.items():
+            current = LeadingTerm(
+                axis=axis,
+                alpha=alpha,
+                coeff=coeff,
+                degree=sum(alpha) - 1,
+            )
+            if best is None:
+                best = current
+                continue
+            if current.alpha > best.alpha:
+                best = current
+                continue
+            if current.alpha == best.alpha and current.axis > best.axis:
+                best = current
+
+    return best
 
 
 def random_spec(
@@ -187,13 +354,12 @@ def random_spec(
     """
     Случайное разреженное дифференцирование из W_n до степени max_degree.
 
-    Args:
-        n:          размерность
-        max_degree: максимальная степень дифференцирования (sum(alpha)-1 <= max_degree)
-        sparsity:   вероятность включить каждый моном (0..1)
-        seed:       seed для воспроизводимости
+    На вход принимает размерность `n`, верхнюю границу `max_degree`,
+    разреженность `sparsity` и необязательный `seed`.
+    На выходе возвращает воспроизводимый случайный `DerivationSpec`.
 
-    Использует только стандартную библиотеку Python (без NumPy).
+    >>> random_spec(2, max_degree=1, sparsity=0.0, seed=7)
+    DerivationSpec(n=2, terms={1: {(0, 0): 1.0}})
     """
     import itertools
 
@@ -220,133 +386,6 @@ def random_spec(
         terms = {axis: {(0,) * n: 1.0}}
 
     return DerivationSpec(n=n, terms=terms)
-
-
-# ---------------------------------------------------------------------------
-# Скобка Ли и присоединённое действие
-# ---------------------------------------------------------------------------
-
-
-def _poly_diff(poly: dict, i: int) -> dict:
-    """Дифференцировать полином по переменной i."""
-    result: dict[tuple[int, ...], Scalar] = {}
-    for alpha, c in poly.items():
-        if alpha[i] > 0:
-            new_alpha = tuple(a - (1 if k == i else 0) for k, a in enumerate(alpha))
-            new_c = c * alpha[i]  # type: ignore[operator]
-            prev = result.get(new_alpha, 0)
-            result[new_alpha] = prev + new_c  # type: ignore[operator]
-    return {a: c for a, c in result.items() if abs(float(c)) > 1e-15}
-
-
-def _poly_mul(f: dict, g: dict) -> dict:
-    """Перемножить два полинома."""
-    result: dict[tuple[int, ...], Scalar] = {}
-    for alpha, cf in f.items():
-        for beta, cg in g.items():
-            gamma = tuple(a + b for a, b in zip(alpha, beta))
-            prev = result.get(gamma, 0)
-            result[gamma] = prev + cf * cg  # type: ignore[operator]
-    return {a: c for a, c in result.items() if abs(float(c)) > 1e-15}
-
-
-def _spec_apply(spec: DerivationSpec, poly: dict) -> dict:
-    """Применить деривацию к полиному: D(poly) = sum_i f_i * ∂(poly)/∂x_i."""
-    result: dict[tuple[int, ...], Scalar] = {}
-    for axis, f_i in spec.terms.items():
-        dg = _poly_diff(poly, axis)
-        if not dg:
-            continue
-        prod = _poly_mul(f_i, dg)
-        for alpha, c in prod.items():
-            prev = result.get(alpha, 0)
-            result[alpha] = prev + c  # type: ignore[operator]
-    return {a: c for a, c in result.items() if abs(float(c)) > 1e-15}
-
-
-def lie_bracket(
-    spec1: DerivationSpec,
-    spec2: DerivationSpec,
-    D_max: int | None = None,
-) -> DerivationSpec:
-    """
-    Вычислить скобку Ли [spec1, spec2].
-
-    Формула: ([D1, D2])_k = D1(g_k) - D2(f_k),
-    где f_k, g_k — k-е компоненты spec1, spec2.
-
-    Args:
-        spec1: первое дифференцирование
-        spec2: второе дифференцирование
-        D_max: если задан, отбросить мономы степени > D_max
-
-    Оба spec должны иметь одинаковое n.
-    """
-    if spec1.n != spec2.n:
-        raise ValueError(
-            f"lie_bracket требует одинакового n: {spec1.n} != {spec2.n}"
-        )
-    n = spec1.n
-    terms: dict[int, dict[tuple[int, ...], Scalar]] = {}
-
-    for k in range(n):
-        g_k = spec2.terms.get(k, {})
-        f_k = spec1.terms.get(k, {})
-
-        contrib: dict[tuple[int, ...], Scalar] = {}
-        for alpha, c in _spec_apply(spec1, g_k).items():
-            prev = contrib.get(alpha, 0)
-            contrib[alpha] = prev + c  # type: ignore[operator]
-        for alpha, c in _spec_apply(spec2, f_k).items():
-            prev = contrib.get(alpha, 0)
-            contrib[alpha] = prev - c  # type: ignore[operator]
-
-        clean: dict[tuple[int, ...], Scalar] = {
-            a: c for a, c in contrib.items() if abs(float(c)) > 1e-15
-        }
-        if D_max is not None:
-            clean = {a: c for a, c in clean.items() if sum(a) - 1 <= D_max}
-
-        if clean:
-            terms[k] = clean
-
-    return DerivationSpec(n=n, terms=terms)
-
-
-def ad(spec: DerivationSpec):
-    """
-    Присоединённое действие: ad(D)(E) = [D, E].
-
-    Возвращает функцию D_max=None -> DerivationSpec.
-
-    Пример:
-        ad_D = ad(D)
-        bracket = ad_D(E)           # [D, E]
-        bracket_trunc = ad_D(E, D_max=5)
-    """
-
-    def _ad(other: DerivationSpec, D_max: int | None = None) -> DerivationSpec:
-        return lie_bracket(spec, other, D_max=D_max)
-
-    return _ad
-
-
-# ---------------------------------------------------------------------------
-# Конвертация в старый numeric формат
-# ---------------------------------------------------------------------------
-
-
-def to_generator(spec: DerivationSpec) -> "dict[int, dict[tuple[int, ...], float]]":
-    """
-    Конвертация DerivationSpec в формат Generator (dict[int, dict[tuple, float]]).
-
-    Это обратно совместимый формат, используемый в lib/numeric/.
-    Коэффициенты приводятся к float.
-    """
-    return {
-        axis: {alpha: float(coeff) for alpha, coeff in mono_dict.items()}
-        for axis, mono_dict in spec.terms.items()
-    }
 
 
 # ---------------------------------------------------------------------------

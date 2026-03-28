@@ -148,7 +148,12 @@ def spec_from_string(text: str, n: int) -> DerivationSpec:
     """
     Разбор строки вида ``x^5*y^5*dx`` в DerivationSpec.
 
-    Обёртка над parse_generator_spec, возвращающая каноническую модель.
+    На вход принимает строку `text` и размерность `n`.
+    На выходе возвращает канонический `DerivationSpec`.
+
+    >>> from lib.core.spec import combine_specs, monomial_spec, partial_spec
+    >>> spec_from_string("dx + x*dy", 2) == combine_specs(partial_spec(2, 0), monomial_spec(2, 1, (1, 0)))
+    True
     """
     generator = parse_generator_spec(text, n)
     return DerivationSpec(n=n, terms=generator)
@@ -161,12 +166,12 @@ def spec_to_string(
     """
     Каноническое строковое представление DerivationSpec.
 
-    Args:
-        spec:      дифференцирование
-        variables: имена переменных (по умолчанию x,y,z,u,v,w или z0,z1,...)
+    На вход принимает `DerivationSpec` и необязательный список имён переменных.
+    На выходе возвращает строку, совместимую с `spec_from_string`.
 
-    Returns:
-        Строка вида ``x^2*y*dx + 3*dy`` (совместима с spec_from_string).
+    >>> from lib.core.spec import combine_specs, monomial_spec, partial_spec
+    >>> spec_to_string(combine_specs(partial_spec(2, 0), monomial_spec(2, 1, (1, 0))))
+    'dx + x*dy'
     """
     n = spec.n
     if variables is None:

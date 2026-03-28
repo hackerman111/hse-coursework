@@ -7,12 +7,71 @@ Sage-backend тесты пропускаются, если SageMath не уст�
 import pytest
 import numpy as np
 
-from lib.core.spec import monomial_spec, partial_spec, combine_specs
-from lib.backends.numeric import to_numeric_components
+from lib.backends.numeric import (
+    from_numeric_components,
+    to_generator,
+    to_numeric_components,
+)
+from lib.core.spec import combine_specs, monomial_spec, partial_spec
+from lib.derivation import LieDerivationFactory, QuotientLieDerivation
 from lib.generators.beldiev import beldiev_specs
 from lib.numeric.recipes import make_beldiev_generators
 from lib.numeric.components import decompose_generator
-from lib.core.spec import to_generator
+
+
+class FakePoly:
+    def __init__(self, lm, lc, degree):
+        self._lm = lm
+        self._lc = lc
+        self._degree = degree
+
+    def lm(self):
+        return self._lm
+
+    def lc(self):
+        return self._lc
+
+    def degree(self):
+        return self._degree
+
+    def dict(self):
+        return {self._lm: self._lc}
+
+
+class FakeQuotientElement:
+    def __init__(self, poly):
+        self._poly = poly
+
+    def lift(self):
+        return self._poly
+
+
+class FakeAlgebra:
+    def __init__(self):
+        self._gens = ("x", "y")
+
+    def gens(self):
+        return self._gens
+
+
+class FakeQuotientAlgebra(FakeAlgebra):
+    def __init__(self):
+        super().__init__()
+
+    def cover(self):
+        return object()
+
+
+class FakeSageDerivation:
+    def __init__(self, algebra, images):
+        self._algebra = algebra
+        self._images = images
+
+    def codomain(self):
+        return self._algebra
+
+    def __call__(self, arg):
+        return self._images[arg]
 
 
 class TestNumericBackend:
@@ -58,6 +117,16 @@ class TestNumericBackend:
         assert 9 not in components
         assert len(components) == 0  # всё обрезано
 
+    def test_roundtrip_from_numeric_components(self):
+        spec = combine_specs(
+            partial_spec(2, axis=0),
+            monomial_spec(2, axis=1, alpha=(1, 0), coeff=2.0),
+            monomial_spec(2, axis=0, alpha=(2, 1), coeff=-3.0),
+        )
+        components = to_numeric_components(spec, D_max=5)
+        recovered = from_numeric_components(2, components)
+        assert recovered == spec
+
     def test_cross_check_beldiev_n3(self):
         """Кросс-проверка для n=3."""
         specs = beldiev_specs(3)
@@ -66,6 +135,55 @@ class TestNumericBackend:
             from_backend = to_numeric_components(spec, D_max=12)
             from_legacy = decompose_generator(gen, n=3, D_max=12)
             assert set(from_backend.keys()) == set(from_legacy.keys())
+
+
+class TestQuotientBackend:
+    """Тесты для quotient-aware symbolic wrapper без зависимости от Sage."""
+
+    def test_factory_uses_quotient_wrapper(self):
+        algebra = FakeQuotientAlgebra()
+        derivation = FakeSageDerivation(algebra, {"x": 0, "y": 0})
+        wrapped = LieDerivationFactory.create(derivation)
+        assert isinstance(wrapped, QuotientLieDerivation)
+
+    def test_quotient_leading_term_uses_lifted_representatives(self):
+        algebra = FakeQuotientAlgebra()
+        derivation = FakeSageDerivation(
+            algebra,
+            {
+                "x": FakeQuotientElement(FakePoly((1, 1), 2, 1)),
+                "y": FakeQuotientElement(FakePoly((2, 0), -3, 1)),
+            },
+        )
+        wrapped = LieDerivationFactory.create(derivation)
+        assert wrapped.leading_term == (1, (2, 0), -3)
+
+    def test_quotient_degree_uses_lifted_representatives(self):
+        algebra = FakeQuotientAlgebra()
+        derivation = FakeSageDerivation(
+            algebra,
+            {
+                "x": FakeQuotientElement(FakePoly((1, 0), 1, 0)),
+                "y": FakeQuotientElement(FakePoly((2, 1), 5, 3)),
+            },
+        )
+        wrapped = LieDerivationFactory.create(derivation)
+        assert wrapped.degree() == 3
+
+    def test_from_sage_uses_lifted_representatives_for_quotients(self):
+        from lib.backends.sage import from_sage
+
+        algebra = FakeQuotientAlgebra()
+        derivation = FakeSageDerivation(
+            algebra,
+            {
+                "x": FakeQuotientElement(FakePoly((2, 0), 1, 1)),
+                "y": FakeQuotientElement(FakePoly((0, 0), -2, -1)),
+            },
+        )
+        wrapped = LieDerivationFactory.create(derivation)
+        recovered = from_sage(wrapped)
+        assert recovered.terms == {0: {(2, 0): 1.0}, 1: {(0, 0): -2.0}}
 
 
 try:

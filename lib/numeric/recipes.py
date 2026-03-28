@@ -6,7 +6,7 @@ Named generator families used by numeric experiments.
 
 from __future__ import annotations
 
-from lib.core.spec import to_generator
+from lib.backends.numeric import to_generator
 from lib.generators.beldiev import beldiev_specs
 from .types import Generator
 

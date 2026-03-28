@@ -13,6 +13,15 @@ from .shared import multiply_all, partial_derivative, require_dimension, zero_ma
 def get_Andristy(algebra: Any):
     """
     Возвращает генераторы (U, V, W) согласно статье Андриста.
+
+    На вход принимает полиномиальную алгебру Sage размерности не меньше 2.
+    На выходе возвращает список из трёх объектов `LieDerivation`.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "z1, z2")
+    >>> generators = get_Andristy(ring)
+    >>> len(generators), type(generators[0]).__name__
+    (3, 'LieDerivation')
     """
     gens, dimension = require_dimension(algebra, "Теорема Андриста")
 

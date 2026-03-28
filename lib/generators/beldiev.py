@@ -27,11 +27,13 @@ def beldiev_specs(n: int) -> list[DerivationSpec]:
     """
     Генераторы Бельдиева [U, V] для W_n как список DerivationSpec.
 
-    Args:
-        n: размерность пространства (n >= 2)
+    На вход принимает размерность `n >= 2`.
+    На выходе возвращает список `[U, V]` в каноническом spec-формате.
 
-    Returns:
-        Список из двух DerivationSpec: [U, V].
+    >>> from lib.core.spec import spec_degree
+    >>> specs = beldiev_specs(2)
+    >>> len(specs), specs[0] == partial_spec(2, axis=1), spec_degree(specs[1])
+    (2, True, 7)
     """
     if n < 2:
         raise ValueError(f"Теорема Бельдиева требует n >= 2, получено n={n}")

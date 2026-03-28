@@ -4,16 +4,21 @@
 
 import pytest
 
+from lib.backends.numeric import to_generator
+from lib.backends.spec_ops import ad, lie_bracket
 from lib.core.spec import (
     DerivationSpec,
-    ad,
     combine_specs,
-    lie_bracket,
+    homogeneous_component,
+    homogeneous_components,
+    leading_term_spec,
     monomial_spec,
+    normalize_spec,
     partial_spec,
     random_spec,
+    scale_spec,
     spec_degree,
-    to_generator,
+    zero_spec,
 )
 
 
@@ -231,6 +236,80 @@ class TestRandomSpec:
         for alpha_dict in spec.terms.values():
             for alpha in alpha_dict:
                 assert len(alpha) == 3
+
+
+class TestSecondEchelonSpec:
+    """Тесты для функций второго эшелона."""
+
+    def test_zero_spec(self):
+        spec = zero_spec(3)
+        assert spec == DerivationSpec(n=3)
+        assert spec.terms == {}
+
+    def test_scale_spec(self):
+        spec = monomial_spec(2, axis=0, alpha=(2, 1), coeff=3)
+        scaled = scale_spec(spec, -2)
+        assert scaled.terms == {0: {(2, 1): -6}}
+
+    def test_scale_spec_by_zero_returns_zero(self):
+        spec = combine_specs(partial_spec(2, 0), partial_spec(2, 1))
+        assert scale_spec(spec, 0) == zero_spec(2)
+
+    def test_normalize_spec_drops_small_terms_with_custom_eps(self):
+        spec = DerivationSpec(
+            n=2,
+            terms={0: {(1, 0): 1.0e-9, (0, 1): 2.0}, 1: {(0, 0): -1.0e-13}},
+        )
+        normalized = normalize_spec(spec, eps=1.0e-8)
+        assert normalized.terms == {0: {(0, 1): 2.0}}
+
+    def test_homogeneous_component(self):
+        spec = combine_specs(
+            partial_spec(2, 0),  # degree -1
+            monomial_spec(2, 1, (1, 0), coeff=2),  # degree 0
+            monomial_spec(2, 0, (2, 1), coeff=3),  # degree 2
+        )
+        assert homogeneous_component(spec, -1) == partial_spec(2, 0)
+        assert homogeneous_component(spec, 0) == monomial_spec(2, 1, (1, 0), coeff=2)
+        assert homogeneous_component(spec, 1) == zero_spec(2)
+
+    def test_homogeneous_components(self):
+        spec = combine_specs(
+            partial_spec(2, 0),
+            monomial_spec(2, 1, (1, 0), coeff=2),
+            monomial_spec(2, 0, (2, 1), coeff=3),
+        )
+        pieces = homogeneous_components(spec)
+        assert set(pieces) == {-1, 0, 2}
+        assert pieces[-1] == partial_spec(2, 0)
+        assert pieces[0] == monomial_spec(2, 1, (1, 0), coeff=2)
+        assert pieces[2] == monomial_spec(2, 0, (2, 1), coeff=3)
+
+    def test_leading_term_spec_returns_none_for_zero(self):
+        assert leading_term_spec(zero_spec(2)) is None
+
+    def test_leading_term_spec_uses_lex_order(self):
+        spec = combine_specs(
+            monomial_spec(2, 0, (1, 2), coeff=5),
+            monomial_spec(2, 1, (2, 0), coeff=7),
+        )
+        leading = leading_term_spec(spec)
+        assert leading is not None
+        assert leading.axis == 1
+        assert leading.alpha == (2, 0)
+        assert leading.coeff == 7
+        assert leading.degree == 1
+
+    def test_leading_term_spec_breaks_ties_by_axis(self):
+        spec = combine_specs(
+            monomial_spec(2, 0, (1, 1), coeff=3),
+            monomial_spec(2, 1, (1, 1), coeff=4),
+        )
+        leading = leading_term_spec(spec)
+        assert leading is not None
+        assert leading.axis == 1
+        assert leading.alpha == (1, 1)
+        assert leading.coeff == 4
 
 
 class TestToGenerator:

@@ -7,9 +7,9 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import Union, TYPE_CHECKING
 
-from .basis import LieBasisSolver
 from .queue_item import QueueItem
 
 if TYPE_CHECKING:
@@ -54,10 +54,15 @@ def check_generation(
         logger:              LibraryLogger (только для numeric)
         structure_constants: предвычисленный StructureConstantCache (только для numeric)
 
-    Returns:
-        NumericResult при numeric mode, SymbolicResult при symbolic mode.
+    На вход принимает список генераторов, режим и параметры solver.
+    На выходе возвращает `NumericResult` или `SymbolicResult`.
+
+    >>> from lib.generators.beldiev import beldiev_specs
+    >>> result = check_generation(beldiev_specs(2), mode="numeric", d=2)
+    >>> result.success, result.is_full_up_to(2)
+    (True, True)
     """
-    from lib.core.spec import DerivationSpec, to_generator
+    from lib.core.spec import DerivationSpec
     from lib.core.results import SymbolicResult
 
     if not generators:
@@ -118,7 +123,7 @@ def _run_numeric(
     structure_constants,
 ):
     """Запуск numeric solver."""
-    from lib.core.spec import DerivationSpec, to_generator
+    from lib.backends.numeric import to_generator
     from lib.numeric.workflows import check_numeric_generation
 
     # Конвертируем в Generator dicts
@@ -154,6 +159,7 @@ def _run_numeric(
 def _run_symbolic(generators, *, is_spec: bool, is_lie: bool, n: int | None, max_iter: int):
     """Запуск symbolic solver."""
     from lib.core.results import SymbolicResult
+    from .basis import LieBasisSolver
 
     if is_spec:
         raise ValueError(
@@ -181,3 +187,11 @@ def _run_symbolic(generators, *, is_spec: bool, is_lie: bool, n: int | None, max
 def _is_lie_derivation(obj) -> bool:
     """Проверка, является ли объект LieDerivation (без импорта Sage)."""
     return type(obj).__name__ in ("LieDerivation", "QuotientLieDerivation")
+
+
+def __getattr__(name: str):
+    if name == "LieBasisSolver":
+        value = getattr(import_module("lib.solver.basis"), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

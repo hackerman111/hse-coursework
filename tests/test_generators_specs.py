@@ -8,7 +8,8 @@
 
 import pytest
 
-from lib.core.spec import partial_spec, spec_degree, to_generator
+from lib.backends.numeric import to_generator
+from lib.core.spec import partial_spec, spec_degree
 from lib.generators.beldiev import beldiev_specs
 from lib.generators.andrist import andrist_specs
 from lib.numeric.recipes import make_beldiev_generators

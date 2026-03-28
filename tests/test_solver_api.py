@@ -55,7 +55,7 @@ class TestCheckGenerationWithGeneratorDicts:
             check_generation([gen], mode="numeric", d=2)
 
     def test_dict_generators_with_n(self):
-        from lib.core.spec import to_generator
+        from lib.backends.numeric import to_generator
         specs = beldiev_specs(2)
         gens = [to_generator(s) for s in specs]
         result = check_generation(gens, n=2, mode="numeric", d=2)

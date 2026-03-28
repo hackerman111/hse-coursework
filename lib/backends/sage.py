@@ -15,6 +15,18 @@ from typing import Any
 from lib.core.spec import DerivationSpec, monomial_spec, combine_specs
 
 
+def _representative_for_export(derivation: Any, element: Any) -> Any:
+    """
+    Получить полиномиального представителя элемента для экспорта в DerivationSpec.
+    """
+    polynomial_ops = getattr(derivation, "_polynomial_ops", None)
+    if polynomial_ops is not None and hasattr(polynomial_ops, "representative"):
+        return polynomial_ops.representative(element)
+    if hasattr(element, "lift"):
+        return element.lift()
+    return element
+
+
 def to_sage(spec: DerivationSpec, algebra: Any) -> Any:
     """
     Конвертация DerivationSpec в LieDerivation (SageMath).
@@ -71,7 +83,7 @@ def from_sage(derivation: Any) -> DerivationSpec:
     terms: dict[int, dict[tuple[int, ...], float]] = {}
 
     for axis, gen in enumerate(gens):
-        poly = derivation(gen)
+        poly = _representative_for_export(derivation, derivation(gen))
         if poly == 0:
             continue
 

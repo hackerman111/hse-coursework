@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from .base import LieDerivation
+from .polynomial_ops import QuotientPolynomialOps
 
 
 class QuotientLieDerivation(LieDerivation):
@@ -20,28 +21,11 @@ class QuotientLieDerivation(LieDerivation):
     """
 
     def __init__(self, sage_derivation: Any) -> None:
-        super().__init__(sage_derivation)
+        super().__init__(sage_derivation, polynomial_ops=QuotientPolynomialOps())
         if not hasattr(self._algebra, "cover"):
             raise ValueError(
                 "QuotientLieDerivation требует фактор-алгебру (с методом cover())"
             )
-
-        if hasattr(self._algebra, "cover_ring"):
-            self._base_ring = self._algebra.cover_ring()
-        else:
-            cover = self._algebra.cover()
-            self._base_ring = cover.domain() if hasattr(cover, "domain") else cover
-
-    def _extract_poly(self, element: Any) -> Any:
-        """
-        Подъём элемента из факторкольца в накрывающее кольцо.
-
-        Позволяет унаследованным leading_term и degree работать с lm()/degree()
-        исходного кольца многочленов, а не факторкольца.
-        """
-        if hasattr(element, "lift"):
-            return element.lift()
-        return element
 
     def __repr__(self) -> str:
         return f"QuotientLieD({self._d})"

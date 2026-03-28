@@ -14,6 +14,15 @@ def get_Beldiev(algebra: Any):
     """
     Возвращает генераторы (U, V) для алгебры Ли векторных полей на K^n
     согласно статье Бельдиева.
+
+    На вход принимает полиномиальную алгебру Sage размерности не меньше 2.
+    На выходе возвращает список из двух объектов `LieDerivation`.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "z1, z2")
+    >>> generators = get_Beldiev(ring)
+    >>> len(generators), type(generators[0]).__name__
+    (2, 'LieDerivation')
     """
     gens, dimension = require_dimension(algebra, "Теорема Бельдиева")
 

@@ -21,15 +21,25 @@ from typing import Dict, Tuple
 
 from lib.core.spec import (  # noqa: F401
     DerivationSpec,
-    monomial_spec,
-    partial_spec,
+    LeadingTerm,
     combine_specs,
-    spec_degree,
+    homogeneous_component,
+    homogeneous_components,
+    leading_term_spec,
+    monomial_spec,
+    normalize_spec,
+    partial_spec,
     random_spec,
-    to_generator,
-    lie_bracket,
-    ad,
+    scale_spec,
+    spec_degree,
+    zero_spec,
 )
+from lib.backends.numeric import (  # noqa: F401
+    from_numeric_components,
+    to_generator,
+    to_numeric_components,
+)
+from lib.backends.spec_ops import ad, lie_bracket  # noqa: F401
 from lib.io.parse import spec_from_string, spec_to_string  # noqa: F401
 from lib.generators.beldiev import beldiev_specs  # noqa: F401
 from lib.generators.andrist import andrist_specs  # noqa: F401
@@ -54,12 +64,21 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
 __all__ = [
     # Canonical spec API
     "DerivationSpec",
+    "LeadingTerm",
     "monomial_spec",
     "partial_spec",
     "combine_specs",
     "spec_degree",
     "random_spec",
+    "zero_spec",
+    "scale_spec",
+    "normalize_spec",
+    "homogeneous_component",
+    "homogeneous_components",
+    "leading_term_spec",
     "to_generator",
+    "to_numeric_components",
+    "from_numeric_components",
     "lie_bracket",
     "ad",
     # I/O

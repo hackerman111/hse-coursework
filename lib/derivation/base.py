@@ -12,6 +12,7 @@ from .constructors import (
     from_mapping as create_from_mapping,
     from_weitzenbock as create_from_weitzenbock,
 )
+from .polynomial_ops import BasePolynomialOps, PolynomialOps
 
 
 class LieDerivation:
@@ -19,9 +20,14 @@ class LieDerivation:
     Обертка над дифференцированием SageMath для удобства работы.
     """
 
-    def __init__(self, sage_derivation: Any) -> None:
+    def __init__(
+        self,
+        sage_derivation: Any,
+        polynomial_ops: PolynomialOps | None = None,
+    ) -> None:
         self._d = sage_derivation
         self._algebra = sage_derivation.codomain()
+        self._polynomial_ops = polynomial_ops or BasePolynomialOps()
 
     def __call__(self, arg: Any) -> Any:
         return self._d(arg)
@@ -58,15 +64,6 @@ class LieDerivation:
     def codomain(self) -> Any:
         return self._algebra
 
-    def _extract_poly(self, element: Any) -> Any:
-        """
-        Извлечь многочлен из элемента алгебры для вычисления leading_term и degree.
-
-        По умолчанию возвращает элемент как есть.
-        QuotientLieDerivation переопределяет этот метод для подъёма из факторкольца.
-        """
-        return element
-
     def bracket(self, other: "LieDerivation") -> "LieDerivation":
         """
         [D1, D2] = D1(D2) - D2(D1)
@@ -84,23 +81,15 @@ class LieDerivation:
     def leading_term(self) -> Optional[Tuple[int, Any, Any]]:
         """
         Возвращает старший член дифференцирования (term).
-
-        Использует _extract_poly для получения многочлена из элемента алгебры,
-        что позволяет QuotientLieDerivation переопределить поведение одним методом.
         """
         best_term = None
 
         for index, gen in enumerate(self._algebra.gens()):
-            poly = self._extract_poly(self(gen))
-            if poly == 0:
+            current = self._polynomial_ops.leading_term(self(gen))
+            if current is None:
                 continue
 
-            try:
-                lm = poly.lm()
-                lc = poly.lc()
-            except AttributeError:
-                lm = self._algebra(1)
-                lc = poly
+            lm, lc = current
 
             if best_term is None:
                 best_term = (index, lm, lc)
@@ -137,20 +126,10 @@ class LieDerivation:
     def degree(self) -> int:
         """
         Возвращает максимальную степень представителей коэффициентов.
-
-        Использует _extract_poly — аналогично leading_term.
         """
         max_deg = -1
         for gen in self._algebra.gens():
-            poly = self._extract_poly(self(gen))
-            if poly == 0:
-                continue
-
-            try:
-                degree = poly.degree()
-            except AttributeError:
-                degree = 0
-
+            degree = self._polynomial_ops.degree(self(gen))
             if degree > max_deg:
                 max_deg = degree
 

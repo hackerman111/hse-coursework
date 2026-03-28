@@ -20,6 +20,12 @@ def decompose_generator(
 
     ``generator`` has the form ``{axis: {alpha: coeff}}`` and the result maps
     each degree ``k`` to a coordinate vector in ``W_n^(k)``.
+
+    WARNING: The returned components are degree-projections of a single element,
+    NOT independent elements of a Lie subalgebra.  Do NOT bracket components
+    from different degrees as if they were separate subalgebra members — this
+    produces phantom brackets.  Use ``bracket_full_elements`` from ``bracket.py``
+    to correctly compute Lie brackets of non-homogeneous elements.
     """
     components: dict[int, np.ndarray] = {}
 

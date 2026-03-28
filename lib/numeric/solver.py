@@ -1,12 +1,10 @@
 """
 Основной решатель: проверка Lie(G_1, …, G_m) ⊇ W_n^{(≤d)}.
 
-Реализует алгоритм из Numeric.md §3.4 с оптимизациями:
-  - нисходящий обход степеней для каскадов вида ad_U^k(V);
-  - нормализация строк со скобками перед пополнением базиса;
-  - SVD-базис вместо RREF для устойчивого численного ранга;
-  - послойное раннее прекращение (§5.4);
-  - кеширование структурных констант.
+Алгоритм Buchberger-style: скобки вычисляются между полными
+(неоднородными) элементами, а не между степенными пулами.
+Оптимизация new-vs-existing: каждый новый элемент коммутируется
+только с уже обработанными.  SVD-базис для устойчивого ранга.
 """
 
 from __future__ import annotations
@@ -16,7 +14,6 @@ from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 
-from .bracket import batch_bracket
 from .components import decompose_generator
 from .indexing import dim_Wn_k
 from .results import DegreeStatus, NumericResult

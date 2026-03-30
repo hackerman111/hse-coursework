@@ -77,17 +77,13 @@ def build_basis_terms(
     include_constants: bool = False,
 ) -> list[BasisTerm]:
     """
-    Строит список базисных термов для пространства с n переменными.
+    Построить полный список мономиальных базисных термов для перебора генераторов.
 
-    Parameters
-    ----------
-    n              : число переменных
-    max_degree     : максимальная суммарная степень мономиального коэффициента
-    include_constants : включить ли константные члены (alpha = (0,...,0))
+    На вход принимает число переменных ``n``, максимальную степень коэффициента ``max_degree`` и флаг ``include_constants``.
+    На выходе возвращает список ``BasisTerm``, покрывающий все допустимые пары ``(alpha, target_var)``.
 
-    Returns
-    -------
-    Список BasisTerm, охватывающий все комбинации alpha и target_var.
+    >>> len(build_basis_terms(2, 1, include_constants=False))
+    4
     """
     terms: list[BasisTerm] = []
     # Перебираем все суммарные степени от 0 до max_degree
@@ -112,15 +108,14 @@ def _multiindices(n: int, total: int) -> Iterator[tuple[int, ...]]:
 
 def build_generator(candidate: list[tuple[BasisTerm, float]]) -> Generator:
     """
-    Строит Generator dict из списка (терм, коэффициент).
+    Собрать разреженный generator из конечного набора мономиальных термов.
 
-    Parameters
-    ----------
-    candidate : список пар (BasisTerm, float)
+    На вход принимает список пар ``(BasisTerm, coeff)``.
+    На выходе возвращает generator в формате ``{axis: {alpha: coeff}}`` с удалением нулевых коэффициентов.
 
-    Returns
-    -------
-    Generator: dict[int, dict[tuple, float]]
+    >>> term = BasisTerm(alpha=(1, 0), target_var=0, n=2)
+    >>> build_generator([(term, 2.0)])
+    {0: {(1, 0): 2.0}}
     """
     generator: Generator = {}
     for term, coeff in candidate:
@@ -144,7 +139,15 @@ def estimate_candidate_count(
     min_terms: int,
     max_terms: int,
 ) -> int:
-    """Оценка числа кандидатов для заданного базиса и множества коэффициентов."""
+    """
+    Оценить мощность конечного пространства перебора генераторов.
+
+    На вход принимает размер базиса ``basis_size``, число коэффициентов ``coeff_count`` и границы числа термов.
+    На выходе возвращает суммарное число возможных кандидатов.
+
+    >>> estimate_candidate_count(3, 2, 1, 2)
+    18
+    """
     total = 0
     for term_count in range(min_terms, max_terms + 1):
         total += math.comb(basis_size, term_count) * (coeff_count**term_count)
@@ -158,10 +161,14 @@ def iter_candidates(
     max_terms: int,
 ) -> Iterator[list[tuple[BasisTerm, float]]]:
     """
-    Итератор по всем кандидатам-генераторам.
+    Итеративно перечислить все кандидаты конечного перебора.
 
-    Перебирает все подмножества basis_terms размером min_terms..max_terms
-    с каждым из коэффициентов из coeffs.
+    На вход принимает набор ``basis_terms``, допустимые коэффициенты ``coeffs`` и диапазон числа термов.
+    На выходе возвращает итератор по спискам пар ``(BasisTerm, coeff)``.
+
+    >>> basis = build_basis_terms(1, 1, include_constants=False)
+    >>> len(list(iter_candidates(basis, [1.0], 1, 1)))
+    1
     """
     for term_count in range(min_terms, max_terms + 1):
         for term_combo in itertools.combinations(basis_terms, term_count):
@@ -170,7 +177,15 @@ def iter_candidates(
 
 
 def format_coefficient(value: float) -> str:
-    """Форматирует коэффициент: целые числа без дробной части."""
+    """
+    Отформатировать коэффициент для строковой спецификации кандидата.
+
+    На вход принимает вещественное число ``value``.
+    На выходе возвращает строку без дробной части для почти целых чисел и обычный ``g``-формат иначе.
+
+    >>> format_coefficient(2.0), format_coefficient(0.5)
+    ('2', '0.5')
+    """
     if abs(value - round(value)) <= 1e-12:
         return str(int(round(value)))
     return f"{value:g}"
@@ -180,7 +195,16 @@ def candidate_to_spec(
     candidate: list[tuple[BasisTerm, float]],
     variables: list[str] | None = None,
 ) -> str:
-    """Форматирует кандидата в строку вида '2*x^2*dx + y*dy'."""
+    """
+    Перевести кандидата из списка термов в строковую спецификацию.
+
+    На вход принимает список пар ``(BasisTerm, coeff)`` и необязательные имена переменных.
+    На выходе возвращает строку вида ``2*x^2*dx + y*dy``.
+
+    >>> term = BasisTerm(alpha=(1, 0), target_var=1, n=2)
+    >>> candidate_to_spec([(term, 1.0)])
+    'x*dy'
+    """
     parts = []
     for term, coeff in candidate:
         factor = term.factor_spec(variables=variables)
@@ -193,9 +217,13 @@ def candidate_to_spec(
 
 def parse_coefficients(text: str) -> list[float]:
     """
-    Разбирает строку коэффициентов вида '1,-1,2'.
+    Разобрать пользовательскую строку коэффициентов для перебора.
 
-    Дедуплицирует по абсолютному значению (с допуском 1e-15).
+    На вход принимает строку ``text`` вида ``1,-1,2``.
+    На выходе возвращает список ненулевых коэффициентов с удалением близких дубликатов.
+
+    >>> parse_coefficients("1, -1, 1, 0, 2")
+    [1.0, -1.0, 2.0]
     """
     coeffs: list[float] = []
     for raw in text.split(","):

@@ -12,7 +12,7 @@ import random as _random
 from dataclasses import dataclass, field
 from typing import Union
 
-# Скалярный тип коэффициента: int, float или рациональное число Python.
+# Скалярный коэффициент: int, float или рациональное число Python.
 Scalar = Union[int, float]
 
 
@@ -76,7 +76,7 @@ class DerivationSpec:
                 return False
             for alpha, coeff in mono_dict.items():
                 other_coeff = other_dict[alpha]
-                # Сравнение с допуском для float
+                # Сравнение с допуском для вещественных коэффициентов
                 if isinstance(coeff, float) or isinstance(other_coeff, float):
                     if abs(float(coeff) - float(other_coeff)) > 1e-12:
                         return False
@@ -86,7 +86,7 @@ class DerivationSpec:
         return True
 
     def __hash__(self) -> int:
-        # Замороженный dataclass требует хеш; делаем по n и осям
+        # Замороженный dataclass требует хеш; строим его по n и индексам осей
         return hash((self.n, tuple(sorted(self.terms.keys()))))
 
 
@@ -366,8 +366,8 @@ def random_spec(
     rng = _random.Random(seed)
     terms: dict[int, dict[tuple[int, ...], Scalar]] = {}
 
-    # Перебираем все мономы z^alpha с sum(alpha) в диапазоне 0..max_degree+1
-    # (степень дифференцирования = sum(alpha) - 1, поэтому берём до max_degree+1)
+    # Перебираем все мономы z^alpha с суммой степеней от 0 до max_degree + 1
+    # Степень дифференцирования равна sum(alpha) - 1, поэтому верхняя граница сдвинута на 1
     for axis in range(n):
         mono_dict: dict[tuple[int, ...], Scalar] = {}
         for total in range(0, max_degree + 2):

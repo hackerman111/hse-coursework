@@ -24,17 +24,33 @@ if TYPE_CHECKING:
     from lib.numeric.types import Generator
 
 
-# Алиасы переменных: x→0, y→1, z→2, u→3, v→4, w→5
+# Имена переменных по умолчанию: x→0, y→1, z→2, u→3, v→4, w→5
 VARIABLE_ALIASES = ("x", "y", "z", "u", "v", "w")
 
 
 def generator_term_count(generator: "Generator") -> int:
-    """Количество ненулевых мономов во всех компонентах генератора."""
+    """
+    Подсчитать число ненулевых мономиальных слагаемых в разреженном генераторе.
+
+    На вход принимает generator в формате ``{axis: {alpha: coeff}}``.
+    На выходе возвращает общее число ненулевых мономов по всем компонентам.
+
+    >>> generator_term_count({0: {(0, 0): 1.0}, 1: {(2, 0): 3.0}})
+    2
+    """
     return sum(len(monomials) for monomials in generator.values())
 
 
 def generator_max_degree(generator: "Generator") -> int:
-    """Максимальная однородная степень в генераторе."""
+    """
+    Найти максимальную однородную степень мономов генератора.
+
+    На вход принимает generator в формате ``{axis: {alpha: coeff}}``.
+    На выходе возвращает максимум величины ``|alpha| - 1`` и ``-1`` для нулевого генератора.
+
+    >>> generator_max_degree({0: {(0, 0): 1.0}, 1: {(2, 0): 3.0}})
+    1
+    """
     max_degree = -1
     for monomials in generator.values():
         for alpha in monomials:
@@ -47,7 +63,15 @@ def describe_generator(
     n: int,
     max_terms: int | None = None,
 ) -> str:
-    """Человекочитаемое описание разреженного генератора."""
+    """
+    Построить компактное аналитическое описание разреженного генератора.
+
+    На вход принимает generator, размерность ``n`` и необязательный предел ``max_terms``.
+    На выходе возвращает строку с мономиальными коэффициентами и целевыми производными.
+
+    >>> describe_generator({0: {(0, 0): 1.0}, 1: {(1, 0): 2.0}}, 2)
+    '1·∂_z0 + 2·z0·∂_z1'
+    """
     variables = [f"z{i}" for i in range(n)]
     parts: list[str] = []
     for axis, monomials in sorted(generator.items()):
@@ -67,7 +91,16 @@ def describe_generator(
 
 
 def describe_random_generator(generator: "Generator", n: int) -> str:
-    """Компактное описание случайного генератора."""
+    """
+    Сформировать краткую сводку о случайно выбранном генераторе.
+
+    На вход принимает generator и число переменных ``n``.
+    На выходе возвращает строку со статистикой разреженности, максимальной степени и примером термов.
+
+    >>> text = describe_random_generator({0: {(0, 0): 1.0}}, 2)
+    >>> "terms=1" in text and "max_degree=-1" in text
+    True
+    """
     return (
         f"random terms={generator_term_count(generator)}, "
         f"max_degree={generator_max_degree(generator)}, "
@@ -78,10 +111,13 @@ def describe_random_generator(generator: "Generator", n: int) -> str:
 
 def parse_generator_spec(spec: str, n: int) -> "Generator":
     """
-    Разбор строк вида ``x^5*y^5*dx`` или ``dx + x*dy``.
+    Разобрать строковую спецификацию полиномиального векторного поля.
 
-    Returns:
-        Generator: словарь вида {axis: {alpha: coeff}}
+    На вход принимает строку ``spec`` вида ``x^5*y^5*dx`` или ``dx + x*dy`` и размерность ``n``.
+    На выходе возвращает generator в формате ``{axis: {alpha: coeff}}``.
+
+    >>> parse_generator_spec("dx + x*dy", 2)
+    {0: {(0, 0): 1.0}, 1: {(1, 0): 1.0}}
     """
     text = spec.replace(" ", "")
     if not text:

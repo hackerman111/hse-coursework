@@ -30,6 +30,17 @@ def _images_from_mapping(algebra: Any, gen_mapping: Any = None) -> list[Any]:
 
 
 def from_mapping(algebra: Any, gen_mapping: Any = None):
+    """
+    Построить дифференцирование по явному отображению генераторов.
+
+    На вход принимает Sage-алгебру ``algebra`` и либо словарь, либо список образов ``gen_mapping``.
+    На выходе возвращает объект ``LieDerivation``, созданный фабрикой.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> type(from_mapping(ring, {ring.gen(0): 1, ring.gen(1): 0})).__name__
+    'LieDerivation'
+    """
     from .factory import LieDerivationFactory
 
     images = _images_from_mapping(algebra, gen_mapping)
@@ -37,6 +48,18 @@ def from_mapping(algebra: Any, gen_mapping: Any = None):
 
 
 def from_linear(algebra: Any, matrix: Any):
+    """
+    Построить линейное дифференцирование по матрице коэффициентов.
+
+    На вход принимает Sage-алгебру ``algebra`` и квадратную матрицу ``matrix`` размера ``n x n``.
+    На выходе возвращает ``LieDerivation``, действие которого на генераторах задаётся этой матрицей.
+
+    >>> from sage.all import PolynomialRing, QQ, matrix
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> derivation = from_linear(ring, matrix(QQ, [[1, 0], [0, 0]]))
+    >>> type(derivation).__name__
+    'LieDerivation'
+    """
     from .factory import LieDerivationFactory
 
     gens = algebra.gens()
@@ -59,6 +82,18 @@ def from_linear(algebra: Any, matrix: Any):
 
 
 def from_weitzenbock(algebra: Any, matrix: Any):
+    """
+    Построить дифференцирование Вайтценбёка по нильпотентной матрице.
+
+    На вход принимает Sage-алгебру ``algebra`` и нильпотентную матрицу ``matrix``.
+    На выходе возвращает линейное ``LieDerivation``, индуцированное этой матрицей.
+
+    >>> from sage.all import PolynomialRing, QQ, matrix
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> derivation = from_weitzenbock(ring, matrix(QQ, [[0, 1], [0, 0]]))
+    >>> type(derivation).__name__
+    'LieDerivation'
+    """
     if not matrix.is_nilpotent():
         raise ValueError(
             "Матрица должна быть нильпотентной для дифференцирования Вайтценбёка"
@@ -67,6 +102,18 @@ def from_weitzenbock(algebra: Any, matrix: Any):
 
 
 def from_jacobian(algebra: Any, polynomials: Any):
+    """
+    Построить дивергентно-свободное дифференцирование по формуле Якобиана.
+
+    На вход принимает Sage-алгебру ``algebra`` и список из ``n-1`` полиномов ``polynomials``.
+    На выходе возвращает ``LieDerivation``, чьи компоненты выражаются через миноры матрицы Якоби.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> derivation = from_jacobian(ring, [ring.gen(0)])
+    >>> type(derivation).__name__
+    'LieDerivation'
+    """
     from .factory import LieDerivationFactory
     from sage.all import Matrix
 

@@ -119,8 +119,8 @@ class LieBasisSolver:
             running = self.step()
 
         if self.stop_condition is not None:
-            # При наличии stop_condition определение успеха — ответственность
-            # вызывающего кода; возвращаем True если stop_condition сработал.
+            # При наличии stop_condition именно вызывающий код определяет,
+            # что считать успехом; здесь возвращаем True, если callback сработал.
             success = self.stop_condition(self)
         else:
             success = all(self.targets_found.values())

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from .types import Generator
 
-# --- Реэкспорт общих утилит из lib/solver/enumeration.py ----------------
+# --- Реэкспорт общих утилит из lib/solver/enumeration.py -------------------
 
 from lib.solver.enumeration import (  # noqa: F401
     estimate_candidate_count,
@@ -25,7 +25,7 @@ from lib.solver.enumeration import (  # noqa: F401
 )
 
 
-# --- n=2-специфичные компоненты (backward compat) -----------------------
+# --- Компоненты, специфичные для n=2 и сохранённые для совместимости -------
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,15 @@ def build_basis_terms(
     max_y_deg: int,
     include_constants: bool,
 ) -> list[BasisTerm]:
-    """Строит список базисных термов для n=2 (backward compat)."""
+    """
+    Построить базисные термы для двумерного backward-compatible перебора.
+
+    На вход принимает максимальные степени ``max_x_deg``, ``max_y_deg`` и флаг ``include_constants``.
+    На выходе возвращает список ``BasisTerm`` для всех допустимых пар степеней и направлений ``dx, dy``.
+
+    >>> len(build_basis_terms(1, 1, include_constants=False))
+    6
+    """
     terms: list[BasisTerm] = []
     for target_var in (0, 1):
         for ax in range(max_x_deg + 1):
@@ -74,7 +82,16 @@ def build_basis_terms(
 
 
 def build_generator(candidate: list[tuple[BasisTerm, float]]) -> Generator:
-    """Строит Generator dict из списка (BasisTerm, коэффициент) для n=2."""
+    """
+    Собрать двумерный generator из backward-compatible списка термов.
+
+    На вход принимает список пар ``(BasisTerm, coeff)``.
+    На выходе возвращает generator формата ``{axis: {(ax, ay): coeff}}``.
+
+    >>> term = BasisTerm(target_var=0, ax=1, ay=0)
+    >>> build_generator([(term, 2.0)])
+    {0: {(1, 0): 2.0}}
+    """
     generator: Generator = {}
     for term, coeff in candidate:
         generator.setdefault(term.target_var, {})
@@ -84,7 +101,16 @@ def build_generator(candidate: list[tuple[BasisTerm, float]]) -> Generator:
 
 
 def candidate_to_spec(candidate: list[tuple[BasisTerm, float]]) -> str:
-    """Форматирует кандидата в строку (n=2, backward compat)."""
+    """
+    Отформатировать двумерного кандидата в строковую спецификацию.
+
+    На вход принимает список пар ``(BasisTerm, coeff)``.
+    На выходе возвращает строку вида ``x*dx + 2*y*dy``.
+
+    >>> term = BasisTerm(target_var=1, ax=0, ay=1)
+    >>> candidate_to_spec([(term, 1.0)])
+    'y*dy'
+    """
     parts = []
     for term, coeff in candidate:
         factor = term.factor_spec()

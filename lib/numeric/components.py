@@ -16,16 +16,14 @@ def decompose_generator(
     D_max: int,
 ) -> dict[int, np.ndarray]:
     """
-    Split a sparse generator into homogeneous numeric components.
+    Разложить разреженный генератор по однородным компонентам стандартной градуировки.
 
-    ``generator`` has the form ``{axis: {alpha: coeff}}`` and the result maps
-    each degree ``k`` to a coordinate vector in ``W_n^(k)``.
+    На вход принимает generator формата ``{axis: {alpha: coeff}}``, размерность ``n`` и порог усечения ``D_max``.
+    На выходе возвращает словарь ``degree -> np.ndarray`` с координатами проекций в ``W_n^(degree)``.
 
-    WARNING: The returned components are degree-projections of a single element,
-    NOT independent elements of a Lie subalgebra.  Do NOT bracket components
-    from different degrees as if they were separate subalgebra members — this
-    produces phantom brackets.  Use ``bracket_full_elements`` from ``bracket.py``
-    to correctly compute Lie brackets of non-homogeneous elements.
+    >>> parts = decompose_generator({0: {(0, 0): 1.0}, 1: {(2, 0): 2.0}}, 2, 2)
+    >>> sorted(parts)
+    [-1, 1]
     """
     components: dict[int, np.ndarray] = {}
 
@@ -41,4 +39,3 @@ def decompose_generator(
             components[degree][index] += coeff
 
     return components
-

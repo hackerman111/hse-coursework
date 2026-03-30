@@ -117,7 +117,7 @@ class NumericLieGenerationChecker:
         if self.verbose and self.logger.enabled:
             self._print_status(iteration)
 
-        # Алгоритм «новые-против-существующих» (Buchberger-style):
+        # Алгоритм «новые против существующих»:
         # processed — элементы, уже прошедшие через все скобки;
         # pending   — элементы, которые ещё нужно прокоммутировать.
         processed: List[Dict[int, np.ndarray]] = []
@@ -127,9 +127,9 @@ class NumericLieGenerationChecker:
             iteration += 1
             next_pending: List[Dict[int, np.ndarray]] = []
 
-            # Скобки: каждый pending × (все processed + остальные pending)
+            # Скобки: каждый pending-элемент с уже обработанными и оставшимися pending
             for i, elem_new in enumerate(pending):
-                # С каждым processed
+                # Коммутируем с уже обработанными элементами
                 for elem_old in processed:
                     next_detail_log_at = self._maybe_print_detailed_status(
                         iteration, t0, next_detail_log_at,
@@ -139,7 +139,7 @@ class NumericLieGenerationChecker:
                     )
                     self._try_add_bracket(bracket, next_pending)
 
-                # С другими pending (только i < j, чтобы не дублировать)
+                # Коммутируем с остальными pending-элементами только при i < j, чтобы не дублировать
                 for j in range(i + 1, len(pending)):
                     next_detail_log_at = self._maybe_print_detailed_status(
                         iteration, t0, next_detail_log_at,
@@ -158,7 +158,7 @@ class NumericLieGenerationChecker:
                 iteration, t0, next_detail_log_at,
             )
 
-            # Ранняя остановка: все целевые степени полны
+            # Ранняя остановка: все целевые степени уже полны
             if all(
                 self.bases[k].rank >= dim_Wn_k(self.n, k)
                 for k in range(-1, self.d + 1)
@@ -167,7 +167,7 @@ class NumericLieGenerationChecker:
 
         elapsed = time.perf_counter() - t0
 
-        # Собираем результат
+        # Формируем итоговый результат
         degrees: List[DegreeStatus] = []
         success = True
         for k in range(-1, self.d + 1):
@@ -294,17 +294,14 @@ class NumericLieGenerationChecker:
 
 def try_add_to_basis(basis: OrthonormalBasis, vectors: np.ndarray) -> int:
     """
-    Нормализовать строки и добавить новые в ортонормальный базис.
+    Нормализовать набор векторов и добавить линейно независимые строки в базис.
 
-    Это извлечённый строительный блок из NumericLieGenerationChecker.run():
-    нормализация + фильтрация нулевых строк + добавление через SVD.
+    На вход принимает ``OrthonormalBasis`` и матрицу строк ``vectors``.
+    На выходе возвращает число новых базисных векторов, добавленных после нормализации и фильтрации нулевых строк.
 
-    Args:
-        basis:   ортонормальный базис подпространства
-        vectors: матрица строк для добавления
-
-    Returns:
-        Количество добавленных новых базисных векторов.
+    >>> basis = OrthonormalBasis(2)
+    >>> try_add_to_basis(basis, np.array([[1.0, 0.0], [0.0, 0.0]]))
+    1
     """
     if vectors.shape[0] == 0:
         return 0
@@ -322,17 +319,14 @@ def check_degree_fullness(
     d: int,
 ) -> "List[DegreeStatus]":
     """
-    Сформировать список статусов для степеней -1..d.
+    Собрать статусы полноты по степеням для уже вычисленных базисов.
 
-    Извлечённый строительный блок из конца NumericLieGenerationChecker.run().
+    На вход принимает словарь ``bases``, число переменных ``n`` и верхнюю степень ``d``.
+    На выходе возвращает список ``DegreeStatus`` для степеней от ``-1`` до ``d``.
 
-    Args:
-        bases: словарь {degree: OrthonormalBasis}
-        n:     размерность пространства
-        d:     максимальная проверяемая степень
-
-    Returns:
-        Список DegreeStatus по каждой степени.
+    >>> bases = {-1: OrthonormalBasis(2), 0: OrthonormalBasis(4)}
+    >>> [status.degree for status in check_degree_fullness(bases, 2, 0)]
+    [-1, 0]
     """
     result: List[DegreeStatus] = []
     for k in range(-1, d + 1):

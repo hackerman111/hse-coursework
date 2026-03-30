@@ -21,13 +21,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sage.all import PolynomialRing, QQ
-
 from lib import spec_from_string, spec_to_string, random_spec
-from lib.backends.sage import to_sage
 from lib.core.results import SymbolicResult
-from lib.solver.basis import LieBasisSolver
-from lib.solver.criterion import make_degree2_stop_condition, format_target
+from lib.symbolic import (
+    SymbolicCriterionResult,
+    check_symbolic_degree2_criterion,
+    check_symbolic_generation,
+)
 from lib.utils import LibraryLogger
 
 
@@ -36,17 +36,6 @@ class RichHelpFormatter(
     argparse.RawDescriptionHelpFormatter,
 ):
     """Help formatter with preserved examples and visible defaults."""
-
-
-def _make_algebra(n: int):
-    """Создать кольцо многочленов K[z0, ..., z_{n-1}]."""
-    var_names = ",".join(f"z{i}" for i in range(n))
-    return PolynomialRing(QQ, var_names, order="degrevlex")
-
-
-def _spec_to_lie(spec, algebra):
-    """DerivationSpec → LieDerivation."""
-    return to_sage(spec, algebra)
 
 
 def _print_result(
@@ -78,19 +67,10 @@ def run_hypo(
     logger: LibraryLogger,
 ) -> SymbolicResult:
     """Запуск режима hypo: полная символьная проверка пары генераторов."""
-    algebra = _make_algebra(n)
-
-    g1 = _spec_to_lie(g1_spec, algebra)
-    g2 = _spec_to_lie(g2_spec, algebra)
-
-    solver = LieBasisSolver([g1, g2], max_iter=max_iter)
-    success = solver.run()
-
-    return SymbolicResult(
-        success=success,
-        iterations=solver.iter_count,
-        basis_size=len(solver.basis),
-        targets_found=dict(solver.targets_found),
+    return check_symbolic_generation(
+        [g1_spec, g2_spec],
+        n=n,
+        max_iter=max_iter,
     )
 
 
@@ -101,53 +81,25 @@ def run_criterion(
     g2_spec,
     max_iter: int,
     logger: LibraryLogger,
-) -> dict:
+) -> SymbolicCriterionResult:
     """Запуск режима criterion: ранняя остановка при нахождении всех степеней <= 2."""
-    algebra = _make_algebra(n)
-
-    g1 = _spec_to_lie(g1_spec, algebra)
-    g2 = _spec_to_lie(g2_spec, algebra)
-
-    stop_condition, targets_status = make_degree2_stop_condition(algebra)
-
-    solver = LieBasisSolver(
-        [g1, g2],
+    return check_symbolic_degree2_criterion(
+        [g1_spec, g2_spec],
+        n=n,
         max_iter=max_iter,
-        stop_condition=stop_condition,
     )
-    solver.run()
-
-    # Финальная проверка статуса целей
-    for target_key in targets_status:
-        if not targets_status[target_key] and target_key in solver.basis:
-            targets_status[target_key] = True
-
-    all_found = all(targets_status.values())
-    found = [k for k, v in targets_status.items() if v]
-    missing = [k for k, v in targets_status.items() if not v]
-
-    return {
-        "all_found": all_found,
-        "found": found,
-        "missing": missing,
-        "targets_status": targets_status,
-        "iterations": solver.iter_count,
-        "basis_size": len(solver.basis),
-        "algebra": algebra,
-    }
 
 
 def _print_criterion_result(
     logger: LibraryLogger,
-    result: dict,
+    result: SymbolicCriterionResult,
     *,
     g1_str: str,
     g2_str: str,
     n: int,
 ) -> None:
     """Вывод результатов режима criterion."""
-    algebra = result["algebra"]
-    total = len(result["found"]) + len(result["missing"])
+    total = result.total_targets
 
     logger.banner(
         f"Символьная проверка: критерий степени <= 2 для W_{n}",
@@ -156,20 +108,19 @@ def _print_criterion_result(
     logger.kv("G1", g1_str)
     logger.kv("G2", g2_str)
     logger.line()
-    logger.kv("Итераций", result["iterations"])
-    logger.kv("Размер базиса", result["basis_size"])
-    logger.kv("Найдено целей", f"{len(result['found'])}/{total}")
+    logger.kv("Итераций", result.iterations)
+    logger.kv("Размер базиса", result.basis_size)
+    logger.kv("Найдено целей", f"{len(result.found_targets)}/{total}")
     logger.line()
 
-    if result["all_found"]:
+    if result.success:
         logger.info("Результат: PASS — все дифференцирования степени <= 2 найдены")
     else:
         logger.info("Результат: FAIL — не все дифференцирования степени <= 2 найдены")
         logger.line()
         logger.info("Не найдены:")
-        for target_key in result["missing"]:
-            axis, mono = target_key
-            logger.info(f"  {format_target(axis, mono, algebra)}")
+        for target in result.missing_targets:
+            logger.info(f"  {target}")
 
 
 def main() -> None:
@@ -276,7 +227,7 @@ def main() -> None:
             )
             _print_criterion_result(logger, result, g1_str=g1_str, g2_str=g2_str,
                                     n=args.n)
-            sys.exit(0 if result["all_found"] else 1)
+            sys.exit(0 if result.success else 1)
 
     else:
         # Случайные G2
@@ -317,7 +268,7 @@ def main() -> None:
                 )
                 _print_criterion_result(logger, result, g1_str=g1_str,
                                         g2_str=g2_str, n=args.n)
-                if result["all_found"]:
+                if result.success:
                     successes += 1
 
             logger.line()

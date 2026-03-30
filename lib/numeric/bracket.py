@@ -25,7 +25,7 @@ from .indexing import (
 
 
 # Тип одной ненулевой структурной константы: (a, b, c, λ)
-# a — индекс в W_n^{(p)}, b — индекс в W_n^{(q)}, c — индекс в W_n^{(r)}, λ — коэффициент
+# Здесь a — индекс в W_n^{(p)}, b — индекс в W_n^{(q)}, c — индекс в W_n^{(r)}, λ — коэффициент
 StructConst = Tuple[int, int, int, int]
 
 
@@ -34,12 +34,13 @@ def precompute_structure_constants(
     n: int, p: int, q: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Предвычислить разреженный тензор структурных констант C^{(p,q)}.
+    Предвычислить разреженное представление структурных констант для ``[W_n^(p), W_n^(q)]``.
 
-    Возвращает 4 массива (row_a, row_b, col_c, vals) такие что
-      [e_a^{(p)}, e_b^{(q)}]_c = vals[k]   для k-го ненулевого элемента.
+    На вход принимает размерность ``n`` и степени ``p, q``.
+    На выходе возвращает четыре numpy-массива ``(row_a, row_b, col_c, vals)``, кодирующие ненулевые коэффициенты скобки.
 
-    Результат кешируется.
+    >>> tuple(arr.shape[0] for arr in precompute_structure_constants(2, -1, -1))
+    (0, 0, 0, 0)
     """
     r = p + q
     s_p = p + 1  # |α| для W_n^{(p)}
@@ -50,7 +51,7 @@ def precompute_structure_constants(
     monoms_q = multiindices(n, s_q)
     lookup_r = multiindex_lookup(n, s_r)
 
-    m_p = len(monoms_p)  # num_monomials(n, s_p)
+    m_p = len(monoms_p)  # число мономов степени s_p
     m_q = len(monoms_q)
     m_r = len(lookup_r)
 
@@ -59,8 +60,8 @@ def precompute_structure_constants(
     cols_c: List[int] = []
     vals: List[int] = []
 
-    alpha_arr = np.array(monoms_p, dtype=np.int64)  # shape (m_p, n)
-    beta_arr = np.array(monoms_q, dtype=np.int64)    # shape (m_q, n)
+    alpha_arr = np.array(monoms_p, dtype=np.int64)  # размер (m_p, n)
+    beta_arr = np.array(monoms_q, dtype=np.int64)  # размер (m_q, n)
 
     for ai, alpha in enumerate(monoms_p):
         alpha_np = alpha_arr[ai]
@@ -112,10 +113,15 @@ def bracket_vectors(
     sc: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> np.ndarray:
     """
-    Вычислить [u, v] для u ∈ W_n^{(p)}, v ∈ W_n^{(q)}.
+    Вычислить скобку Ли двух однородных координатных векторов.
 
-    u, v — одномерные numpy-массивы (координаты в базисе компоненты).
-    Возвращает вектор в W_n^{(p+q)}.
+    На вход принимает векторы ``u`` и ``v`` компонент степеней ``p`` и ``q``, размерность ``n`` и необязательный кеш структурных констант ``sc``.
+    На выходе возвращает координатный вектор скобки в ``W_n^(p+q)``.
+
+    >>> u = np.array([1.0, 0.0])
+    >>> v = np.array([0.0, 1.0])
+    >>> bracket_vectors(u, -1, v, -1, 2).tolist()
+    [0.0, 0.0]
     """
     r = p + q
     if sc is None:
@@ -128,7 +134,7 @@ def bracket_vectors(
     if len(rows_a) == 0:
         return result
 
-    # Vectorised: result[c] += u[a] * v[b] * λ
+    # Векторизованное накопление: result[c] += u[a] * v[b] * λ
     contributions = u[rows_a] * v[rows_b] * vals
     np.add.at(result, cols_c, contributions)
     return result
@@ -141,26 +147,15 @@ def bracket_full_elements(
     structure_cache: "StructureConstantCache",
 ) -> Dict[int, np.ndarray]:
     """
-    Вычислить скобку Ли [f, g] двух полных (неоднородных) элементов.
+    Вычислить скобку Ли двух полных неоднородных элементов.
 
-    Каждый элемент — словарь {степень: координатный вектор в W_n^(k)}.
-    Скобка вычисляется как:
-        [f, g]_r = sum_{p+q=r} [f_p, g_q]
-    для каждой целевой степени r.
+    На вход принимает словари компонент ``f`` и ``g``, размерность ``n`` и ``structure_cache``.
+    На выходе возвращает словарь ``degree -> np.ndarray`` для результирующего элемента, включая только ненулевые степени.
 
-    Это корректно обрабатывает неоднородные элементы, суммируя ВСЕ
-    вклады разных степеней, в отличие от скобок пулов по степеням, которые
-    могут порождать фантомные скобки.
-
-    Args:
-        f: первый элемент, {степень: np.ndarray}
-        g: второй элемент, {степень: np.ndarray}
-        n: число переменных
-        structure_cache: предвычисленные структурные константы
-
-    Returns:
-        Dict[int, np.ndarray] — скобка [f, g], индексированная по степени.
-        Включаются только степени с ненулевым результатом.
+    >>> from .structure import StructureConstantCache
+    >>> cache = StructureConstantCache(n=2, D_max=0)
+    >>> bracket_full_elements({-1: np.array([1.0, 0.0])}, {-1: np.array([0.0, 1.0])}, 2, cache)
+    {}
     """
     result: Dict[int, np.ndarray] = {}
 
@@ -174,7 +169,7 @@ def bracket_full_elements(
             if p <= q:
                 contribution = bracket_vectors(f_p, p, g_q, q, n, sc=sc)
             else:
-                # [f_p, g_q] = -[g_q, f_p] при использовании sc для (q, p)
+                # При использовании sc для (q, p) применяем антисимметрию скобки
                 contribution = -bracket_vectors(g_q, q, f_p, p, n, sc=sc)
 
             N_r = dim_Wn_k(n, r)
@@ -182,7 +177,7 @@ def bracket_full_elements(
                 result[r] = np.zeros(N_r, dtype=np.float64)
             result[r] += contribution
 
-    # Отфильтровать нулевые компоненты
+    # Отбрасываем нулевые компоненты
     return {k: v for k, v in result.items() if np.linalg.norm(v) > 1e-15}
 
 
@@ -195,12 +190,15 @@ def batch_bracket(
     sc: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
 ) -> np.ndarray:
     """
-    Вычислить все скобки [row_s(Bp), row_t(Bq)].
+    Пакетно вычислить скобки между всеми строками двух матриц базиса.
 
-    Bp : shape (rp, Np) — строки базиса L^{(p)}
-    Bq : shape (rq, Nq) — строки базиса L^{(q)}
+    На вход принимает матрицы ``Bp`` и ``Bq`` с базисными строками степеней ``p`` и ``q``, размерность ``n`` и необязательный кеш ``sc``.
+    На выходе возвращает матрицу, каждая строка которой равна одной скобке ``[Bp_s, Bq_t]``.
 
-    Возвращает матрицу shape (rp * rq, Nr) со строками = [Bp_s, Bq_t].
+    >>> Bp = np.array([[1.0, 0.0]])
+    >>> Bq = np.array([[0.0, 1.0]])
+    >>> batch_bracket(Bp, -1, Bq, -1, 2).shape
+    (0, 2)
     """
     r = p + q
     if sc is None:
@@ -214,14 +212,12 @@ def batch_bracket(
     if len(rows_a) == 0 or rp == 0 or rq == 0:
         return np.empty((0, N_r), dtype=np.float64)
 
-    # Для каждой пары (s, t) вычисляем contributions
-    # Bp[:, rows_a] shape (rp, nnz), Bq[:, rows_b] shape (rq, nnz)
-    A = Bp[:, rows_a]  # (rp, nnz)
-    B = Bq[:, rows_b]  # (rq, nnz)
+    # Для каждой пары (s, t) вычисляем вклад в результирующую строку
+    # Bp[:, rows_a] имеет размер (rp, nnz), Bq[:, rows_b] имеет размер (rq, nnz)
+    A = Bp[:, rows_a]  # размер (rp, nnz)
+    B = Bq[:, rows_b]  # размер (rq, nnz)
 
-    # outer: (rp, rq, nnz), масштабировано на vals
-    # result[s, t, c] = sum over matching k : A[s, k] * B[t, k] * vals[k]
-    # Вместо полного outer-product работаем построчно для экономии памяти
+    # Вместо полного тензорного произведения работаем построчно ради экономии памяти
     results = np.zeros((rp * rq, N_r), dtype=np.float64)
     for s in range(rp):
         a_row = A[s]  # (nnz,)

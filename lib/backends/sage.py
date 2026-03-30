@@ -29,14 +29,16 @@ def _representative_for_export(derivation: Any, element: Any) -> Any:
 
 def to_sage(spec: DerivationSpec, algebra: Any) -> Any:
     """
-    Конвертация DerivationSpec в LieDerivation (SageMath).
+    Конвертировать каноническое spec-представление в объект SageMath-деривации.
 
-    Args:
-        spec:    каноническое представление дифференцирования
-        algebra: кольцо многочленов SageMath (PolynomialRing)
+    На вход принимает ``DerivationSpec`` и полиномиальную алгебру Sage ``algebra`` той же размерности.
+    На выходе возвращает объект ``LieDerivation``, согласованный с данным ``spec``.
 
-    Returns:
-        LieDerivation — объект из lib/derivation/
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> derivation = to_sage(monomial_spec(2, 0, (1, 0)), ring)
+    >>> type(derivation).__name__
+    'LieDerivation'
     """
     from lib.derivation.base import LieDerivation
 
@@ -48,7 +50,7 @@ def to_sage(spec: DerivationSpec, algebra: Any) -> Any:
             f"spec.n={spec.n} не совпадает с числом генераторов алгебры {n}"
         )
 
-    # Строим отображение: gen_i → образ (многочлен из algebra)
+    # Строим отображение: gen_i → образ в виде многочлена из algebra
     images = [algebra.zero() for _ in range(n)]
 
     for axis, mono_dict in spec.terms.items():
@@ -65,16 +67,16 @@ def to_sage(spec: DerivationSpec, algebra: Any) -> Any:
 
 def from_sage(derivation: Any) -> DerivationSpec:
     """
-    Конвертация LieDerivation (SageMath) в DerivationSpec.
+    Экспортировать SageMath-деривацию в каноническое ``DerivationSpec``.
 
-    Извлекает коэффициенты многочленов из образов дифференцирования
-    и строит каноническое представление.
+    На вход принимает объект ``LieDerivation``.
+    На выходе возвращает ``DerivationSpec``, восстановленный по образам координатных функций.
 
-    Args:
-        derivation: LieDerivation — дифференцирование из lib/derivation/
-
-    Returns:
-        DerivationSpec — каноническое представление
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> derivation = to_sage(combine_specs(monomial_spec(2, 0, (1, 0)), monomial_spec(2, 1, (0, 0))), ring)
+    >>> from_sage(derivation)
+    DerivationSpec(n=2, terms={0: {(1, 0): 1.0}, 1: {(0, 0): 1.0}})
     """
     algebra = derivation.codomain()
     gens = algebra.gens()
@@ -95,13 +97,13 @@ def from_sage(derivation: Any) -> DerivationSpec:
                 if hasattr(monomial, "__iter__"):
                     alpha = tuple(int(e) for e in monomial)
                 else:
-                    # Одна переменная: monomial — целое число (степень)
+                    # Для одной переменной monomial хранится как целая степень
                     alpha = (int(monomial),)
                 c = float(coeff)
                 if abs(c) > 1e-15:
                     mono_dict[alpha] = c
         except AttributeError:
-            # poly — константа
+            # Если poly является константой, обрабатываем её отдельно
             c = float(poly)
             if abs(c) > 1e-15:
                 mono_dict[(0,) * n] = c

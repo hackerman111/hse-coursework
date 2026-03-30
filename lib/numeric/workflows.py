@@ -78,7 +78,15 @@ def resolve_hypothesis_generator(
     a: int,
     b: int,
 ) -> Generator:
-    """Prefer an explicit generator spec, otherwise use the legacy monomial pair."""
+    """
+    Разрешить второй генератор гипотезы из явной спецификации или legacy-параметров.
+
+    На вход принимает размерность ``n``, строку ``spec`` и показатели ``a, b``.
+    На выходе возвращает generator, который затем можно передать в numeric solver.
+
+    >>> resolve_hypothesis_generator(2, "dy", 1, 2)
+    {1: {(0, 0): 1.0}}
+    """
     if spec:
         return parse_generator_spec(spec, n)
     return make_monomial_D(n, a, b)
@@ -95,7 +103,16 @@ def check_numeric_generation(
     logger: LibraryLogger | None = None,
     structure_constants: StructureConstantCache | None = None,
 ) -> NumericResult:
-    """Run the core numeric checker through a stable public entry point."""
+    """
+    Запустить основной numeric solver через стабильную публичную обёртку.
+
+    На вход принимает размерность ``n``, глубину проверки ``d`` и список generator-ов с дополнительными параметрами.
+    На выходе возвращает ``NumericResult`` со статусом полноты по степеням.
+
+    >>> result = check_numeric_generation(2, 0, [{0: {(0, 0): 1.0}, 1: {(0, 0): 1.0}}], verbose=False)
+    >>> result.d, result.n
+    (0, 2)
+    """
     checker = NumericLieGenerationChecker(
         n,
         d,
@@ -121,7 +138,14 @@ def check_full_lie_generation(
     structure_constants: StructureConstantCache | None = None,
 ) -> FullLieGenerationCheck:
     """
-    Apply the project criterion for generating the whole Lie algebra.
+    Применить проектный критерий полной порождённости к набору генераторов.
+
+    На вход принимает размерность ``n``, список generator-ов и параметры усечения.
+    На выходе возвращает ``FullLieGenerationCheck`` с raw numeric-результатом и итоговым критерием.
+
+    >>> check = check_full_lie_generation(2, [{0: {(0, 0): 1.0}}], verbose=False)
+    >>> hasattr(check, "criterion_result")
+    True
     """
     numeric_result = check_numeric_generation(
         n=n,
@@ -151,7 +175,16 @@ def run_beldiev(
     log_every_s: float | None = None,
     logger: LibraryLogger | None = None,
 ) -> NumericResult:
-    """Check Beldiev's explicit generators up to degree ``d``."""
+    """
+    Проверить семейство Бельдиева на порождение до степени ``d``.
+
+    На вход принимает размерность ``n``, степень усечения ``d`` и параметры логирования.
+    На выходе возвращает ``NumericResult`` для численного эксперимента.
+
+    >>> result = run_beldiev(2, 0)
+    >>> result.n, result.d
+    (2, 0)
+    """
     logger = logger or LibraryLogger()
     logger.banner(
         "Проверка генераторов Бельдиева",
@@ -187,7 +220,14 @@ def run_hypothesis(
     logger: LibraryLogger | None = None,
 ) -> HypothesisRunResult:
     """
-    Check whether ``Lie(G1, G2)`` fills all layers up to degree ``d``.
+    Проверить гипотезу двухгенераторной порождённости на серии численных запусков.
+
+    На вход принимает размерность ``n``, степень ``d``, первый generator и параметры выбора второго generator-а.
+    На выходе возвращает ``HypothesisRunResult`` со всеми проведёнными испытаниями.
+
+    >>> result = run_hypothesis(2, 0, {0: {(0, 0): 1.0}}, second_gen={1: {(0, 0): 1.0}})
+    >>> result.total_trials
+    1
     """
     if E_max_degree is None:
         E_max_degree = d + 2
@@ -283,4 +323,3 @@ def run_hypothesis(
         )
 
     return run_result
-

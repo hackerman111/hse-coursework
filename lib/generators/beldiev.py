@@ -38,14 +38,14 @@ def beldiev_specs(n: int) -> list[DerivationSpec]:
     if n < 2:
         raise ValueError(f"Теорема Бельдиева требует n >= 2, получено n={n}")
 
-    # U = ∂/∂z_{n-1}
+    # Генератор U равен ∂/∂z_{n-1}
     u = partial_spec(n, axis=n - 1)
 
-    # V: собирается из (n-1) + 1 слагаемых
+    # Генератор V собирается из (n - 1) + 1 слагаемых
     v_parts: list[DerivationSpec] = []
 
     # Компоненты V_k для k = 0..n-2:
-    # image = (z_{k+1} * ... * z_{n-1})^{4*(k+2)} * ∂/∂z_k
+    # образ имеет вид (z_{k+1} * ... * z_{n-1})^{4*(k+2)} * ∂/∂z_k
     for k in range(n - 1):
         power = 4 * (k + 2)
         alpha = [0] * n

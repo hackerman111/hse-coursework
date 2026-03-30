@@ -126,7 +126,7 @@ def _run_numeric(
     from lib.backends.numeric import to_generator
     from lib.numeric.workflows import check_numeric_generation
 
-    # Конвертируем в Generator dicts
+    # Приводим вход к словарному формату Generator
     if is_spec:
         specs = generators
         effective_n = specs[0].n if n is None else n
@@ -137,7 +137,7 @@ def _run_numeric(
             "в DerivationSpec через lib.backends.sage.from_sage()"
         )
     else:
-        # Уже dict[int, dict[tuple, float]]
+        # Формат уже совпадает с dict[int, dict[tuple, float]]
         numeric_generators = list(generators)
         if n is None:
             raise ValueError("Для numeric mode с Generator dict необходимо указать n=")

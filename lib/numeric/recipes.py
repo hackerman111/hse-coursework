@@ -13,8 +13,12 @@ from .types import Generator
 
 def make_beldiev_generators(n: int) -> list[Generator]:
     """
-    Beldiev's explicit 2-generator family for ``W_n``.
+    Построить численные генераторы семейства Бельдиева для ``W_n``.
 
-    Делегирует в beldiev_specs() — каноническое определение формул.
+    На вход принимает размерность ``n``.
+    На выходе возвращает список из двух generator-объектов, полученных из канонических ``DerivationSpec``.
+
+    >>> len(make_beldiev_generators(2))
+    2
     """
     return [to_generator(s) for s in beldiev_specs(n)]

@@ -35,8 +35,14 @@ def evaluate_full_lie_generation(
     required_degree: int = FULL_LIE_GENERATION_DEGREE,
 ) -> LieGenerationCriterionResult:
     """
-    Project criterion: if all derivations up to degree 2 are generated, treat the
-    set as generating the whole Lie algebra.
+    Оценить проектный критерий полной порождённости по усечённому numeric-результату.
+
+    На вход принимает ``NumericResult`` и требуемую степень ``required_degree``.
+    На выходе возвращает структурированное решение ``LieGenerationCriterionResult``.
+
+    >>> result = NumericResult(n=2, d=2, D_max=2, success=True, degrees=[], iterations=0, elapsed_s=0.0)
+    >>> evaluate_full_lie_generation(result).satisfied
+    False
     """
     if not result.covers_degree(required_degree):
         return LieGenerationCriterionResult(
@@ -79,9 +85,17 @@ def satisfies_full_lie_generation(
     result: NumericResult,
     required_degree: int = FULL_LIE_GENERATION_DEGREE,
 ) -> bool:
-    """Convenience boolean wrapper around ``evaluate_full_lie_generation``."""
+    """
+    Проверить проектный критерий полной порождённости в булевом виде.
+
+    На вход принимает ``NumericResult`` и необязательную требуемую степень.
+    На выходе возвращает ``True`` тогда и только тогда, когда критерий выполнен.
+
+    >>> result = NumericResult(n=2, d=1, D_max=1, success=True, degrees=[], iterations=0, elapsed_s=0.0)
+    >>> satisfies_full_lie_generation(result)
+    False
+    """
     return evaluate_full_lie_generation(
         result,
         required_degree=required_degree,
     ).satisfied
-

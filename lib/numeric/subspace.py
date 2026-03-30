@@ -78,9 +78,9 @@ class OrthonormalBasis:
         else:
             combined = M
 
-        # QR с перестановкой столбцов для устойчивого ранга
-        # scipy.linalg.qr с pivoting даёт лучшую оценку ранга,
-        # но для переносимости используем numpy SVD (золотой стандарт для ранга)
+        # Для устойчивой оценки ранга используем SVD
+        # scipy.linalg.qr с перестановками тоже подходит,
+        # но numpy SVD переносимее и достаточно устойчив
         old_rank = self._rank
         new_rank = self._compute_rank_and_basis(combined)
 
@@ -93,11 +93,10 @@ class OrthonormalBasis:
 
         SVD — наиболее устойчивый способ определения числового ранга.
         """
-        # SVD: combined^T = U @ diag(s) @ V^T
-        # Ранг = число сингулярных значений > threshold
+        # В разложении SVD ранг равен числу сингулярных значений выше порога
         U, s, Vt = np.linalg.svd(combined.T, full_matrices=False)
 
-        # Relative threshold (как в numpy.linalg.matrix_rank)
+        # Относительный порог, аналогичный numpy.linalg.matrix_rank
         tol = max(combined.shape) * s[0] * np.finfo(np.float64).eps if len(s) > 0 else 0.0
         tol = max(tol, self._eps)
 
@@ -105,7 +104,7 @@ class OrthonormalBasis:
         new_rank = min(new_rank, self.dim)
 
         if new_rank > self._rank:
-            # Ортонормальный базис = первые new_rank столбцов U, транспонированные
+            # Новый ортонормальный базис берём из первых new_rank столбцов U
             self.rows = U[:, :new_rank].T.copy()
             self._rank = new_rank
 

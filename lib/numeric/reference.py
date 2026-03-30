@@ -19,7 +19,15 @@ NUMERIC_MD_DIMENSION_EXAMPLES = [
 
 
 def check_dimension_examples(logger: LibraryLogger | None = None) -> bool:
-    """Verify the dimension table quoted in ``hypo/Numeric.md``."""
+    """
+    Сверить табличные размерности из документации с аналитической формулой.
+
+    На вход принимает необязательный ``LibraryLogger``.
+    На выходе возвращает ``True``, если все эталонные значения совпали с ``dim_Wn_leq_d``.
+
+    >>> check_dimension_examples()
+    True
+    """
     logger = logger or LibraryLogger()
     logger.line("Проверка таблицы размерностей из Numeric.md:", indent=0)
     all_ok = True

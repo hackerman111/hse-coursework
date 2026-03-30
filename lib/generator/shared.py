@@ -12,6 +12,17 @@ from ..derivation import LieDerivation
 
 
 def require_dimension(algebra: Any, theorem_name: str, minimum: int = 2):
+    """
+    Проверить, что размерность алгебры достаточна для применяемой теоремы.
+
+    На вход принимает Sage-алгебру ``algebra``, имя теоремы ``theorem_name`` и нижнюю границу ``minimum``.
+    На выходе возвращает пару ``(gens, dimension)``.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> require_dimension(ring, "demo")
+    ((x, y), 2)
+    """
     gens = algebra.gens()
     dimension = len(gens)
     if dimension < minimum:
@@ -20,14 +31,43 @@ def require_dimension(algebra: Any, theorem_name: str, minimum: int = 2):
 
 
 def zero_mapping(gens: tuple[Any, ...] | list[Any]) -> dict[Any, Any]:
+    """
+    Построить нулевое отображение на списке генераторов.
+
+    На вход принимает кортеж или список генераторов ``gens``.
+    На выходе возвращает словарь ``gen -> 0``.
+
+    >>> zero_mapping(("x", "y"))
+    {'x': 0, 'y': 0}
+    """
     return {gen: 0 for gen in gens}
 
 
 def partial_derivative(algebra: Any, gens: tuple[Any, ...], target_index: int) -> LieDerivation:
+    """
+    Построить частную производную по выбранному генератору алгебры.
+
+    На вход принимает Sage-алгебру ``algebra``, её генераторы ``gens`` и индекс ``target_index``.
+    На выходе возвращает ``LieDerivation``, действующее как ``d/d gens[target_index]``.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> type(partial_derivative(ring, ring.gens(), 1)).__name__
+    'LieDerivation'
+    """
     mapping = zero_mapping(gens)
     mapping[gens[target_index]] = 1
     return LieDerivation.from_mapping(algebra, mapping)
 
 
 def multiply_all(values: tuple[Any, ...] | list[Any]) -> Any:
+    """
+    Перемножить конечный набор факторов в указанном порядке.
+
+    На вход принимает кортеж или список ``values``.
+    На выходе возвращает их произведение, а для пустого набора единицу.
+
+    >>> multiply_all([2, 3, 4])
+    24
+    """
     return reduce(operator.mul, values, 1)

@@ -13,9 +13,15 @@ from typing import Any, Callable, Dict, List, Tuple
 
 def enumerate_targets_up_to_degree2(algebra) -> List[Tuple[int, Any]]:
     """
-    Перечислить все целевые (comp_idx, monomial) пары для степеней -1, 0, 1, 2.
+    Перечислить все целевые мономиальные направления до второй степени включительно.
 
-    Степень дифференцирования z^alpha * ∂/∂z_i равна |alpha| - 1.
+    На вход принимает полиномиальную алгебру Sage ``algebra``.
+    На выходе возвращает список пар ``(axis, monomial)``, соответствующих всем базисным элементам степеней ``-1, 0, 1, 2``.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> len(enumerate_targets_up_to_degree2(ring))
+    20
     """
     gens = algebra.gens()
     n = len(gens)
@@ -44,12 +50,16 @@ def make_degree2_stop_condition(
     algebra,
 ) -> Tuple[Callable, Dict[Tuple[int, Any], bool]]:
     """
-    Построить stop_condition callback и словарь статуса целей.
+    Построить критерий остановки solver-а по покрытию всех целей до степени 2.
 
-    Returns:
-        (stop_condition, targets_status):
-            stop_condition — callable(solver) -> bool
-            targets_status — dict {(axis, monomial): bool} для отслеживания
+    На вход принимает полиномиальную алгебру Sage ``algebra``.
+    На выходе возвращает пару ``(stop_condition, targets_status)`` для отслеживания найденных базисных элементов.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> stop_condition, targets_status = make_degree2_stop_condition(ring)
+    >>> callable(stop_condition) and len(targets_status) == 20
+    True
     """
     targets = enumerate_targets_up_to_degree2(algebra)
     targets_status: Dict[Tuple[int, Any], bool] = {t: False for t in targets}
@@ -64,7 +74,17 @@ def make_degree2_stop_condition(
 
 
 def format_target(axis: int, monomial, algebra) -> str:
-    """Человекочитаемое описание целевого дифференцирования."""
+    """
+    Отформатировать целевое дифференцирование в удобочитаемую строку.
+
+    На вход принимает индекс компоненты ``axis``, моном ``monomial`` и алгебру Sage ``algebra``.
+    На выходе возвращает строку вида ``x*y·∂/∂x``.
+
+    >>> from sage.all import PolynomialRing, QQ
+    >>> ring = PolynomialRing(QQ, "x,y")
+    >>> format_target(0, ring.gens()[1], ring)
+    'y·∂/∂x'
+    """
     gens = algebra.gens()
     mono_str = str(monomial) if monomial != 1 else ""
     var_name = str(gens[axis])

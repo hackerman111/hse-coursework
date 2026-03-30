@@ -36,17 +36,17 @@ def andrist_specs(n: int) -> list[DerivationSpec]:
     if n < 2:
         raise ValueError(f"Теорема Андриста требует n >= 2, получено n={n}")
 
-    # U = ∂/∂z_{n-1}
+    # Генератор U равен ∂/∂z_{n-1}
     u = partial_spec(n, axis=n - 1)
 
-    # V: собирается из n слагаемых
+    # Генератор V собирается из n слагаемых
     v_parts: list[DerivationSpec] = []
 
     # Константная компонента V_{n-1}: 1 * ∂/∂z_{n-1}
     v_parts.append(monomial_spec(n, axis=n - 1, alpha=(0,) * n, coeff=1))
 
     # Полиномиальные компоненты V_k для k = 0..n-2:
-    # image = z_{k+1}^3 * z_{k+2} * ... * z_{n-1} * ∂/∂z_k
+    # образ имеет вид z_{k+1}^3 * z_{k+2} * ... * z_{n-1} * ∂/∂z_k
     for k in range(n - 1):
         alpha = [0] * n
         alpha[k + 1] = 3
@@ -56,7 +56,7 @@ def andrist_specs(n: int) -> list[DerivationSpec]:
 
     v = combine_specs(*v_parts)
 
-    # W: z_0^2 * ... * z_{n-2}^2 * z_{n-1} * ∂/∂z_{n-1}
+    # Генератор W: z_0^2 * ... * z_{n-2}^2 * z_{n-1} * ∂/∂z_{n-1}
     alpha_w = [0] * n
     for j in range(n - 1):
         alpha_w[j] = 2
